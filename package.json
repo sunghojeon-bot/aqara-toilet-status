@@ -1,0 +1,13 @@
+{
+  "name": "aqara-toilet-status",
+  "version": "1.0.0",
+  "description": "Aqara 화장실 재실 현황판 - 층별 1인용 화장실 사용 가능 여부 실시간 표시",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

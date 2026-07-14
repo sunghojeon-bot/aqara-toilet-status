@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AQARA LIFE · 화장실 재실 현황</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root {
+    --bg0: #0b1413;
+    --bg1: #0e1a18;
+    --surface: rgba(255,255,255,.045);
+    --surface-strong: rgba(255,255,255,.07);
+    --line: rgba(255,255,255,.09);
+    --line-soft: rgba(255,255,255,.055);
+    --ink: #eef4f2;
+    --ink-2: #9db1ad;
+    --ink-3: #5f736f;
+    --teal: #35c4b5;
+    --teal-soft: rgba(53,196,181,.14);
+    --good: #3ddc97;
+    --good-soft: rgba(61,220,151,.12);
+    --busy: #ff7a7a;
+    --busy-soft: rgba(255,122,122,.13);
+    --idle: #8fa19d;
+    --male: #6ea8ff;
+    --female: #ff8fb3;
+    --radius: 22px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 700px at 85% -10%, rgba(53,196,181,.10), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(53,196,181,.06), transparent 55%),
+      linear-gradient(160deg, var(--bg1), var(--bg0) 55%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    max-width: 1180px; margin: 0 auto; padding: 34px 28px 8px;
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  .brand .word {
+    font-size: .78rem; letter-spacing: .42em; color: var(--teal);
+    font-weight: 700; text-transform: uppercase;
+  }
+  .brand h1 {
+    font-size: clamp(1.5rem, 2.6vw, 2.05rem); font-weight: 800; letter-spacing: -.02em; margin-top: 8px;
+  }
+  .brand .sub { margin-top: 7px; font-size: .84rem; color: var(--ink-2); font-weight: 500; }
+  .headright { display: flex; align-items: center; gap: 14px; }
+  .clock { text-align: right; }
+  .clock .time { font-size: 1.7rem; font-weight: 750; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+  .clock .date { font-size: .78rem; color: var(--ink-2); margin-top: 2px; }
+  .conn {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: .74rem; font-weight: 600; color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px;
+    background: var(--surface);
+    backdrop-filter: blur(8px);
+  }
+  .conn .dot { width: 7px; height: 7px; border-radius: 50%; background: #e7c46a; }
+  .conn.ok .dot { background: var(--good); box-shadow: 0 0 8px rgba(61,220,151,.7); }
+  .conn.err .dot { background: var(--busy); box-shadow: 0 0 8px rgba(255,122,122,.7); }
+  .gearbtn {
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
+    border-radius: 999px; width: 38px; height: 38px; cursor: pointer; font-size: 1rem;
+    transition: all .2s;
+  }
+  .gearbtn:hover { color: var(--ink); border-color: rgba(255,255,255,.2); }
+
+  /* ---------- summary ---------- */
+  main { max-width: 1180px; margin: 0 auto; padding: 18px 28px 70px; }
+  .summary {
+    display: flex; gap: 26px; align-items: center; flex-wrap: wrap;
+    border: 1px solid var(--line-soft); border-radius: var(--radius);
+    background: linear-gradient(120deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+    backdrop-filter: blur(10px);
+    padding: 18px 26px; margin: 14px 0 26px;
+  }
+  .stat { display: flex; align-items: baseline; gap: 10px; }
+  .stat .k { font-size: .78rem; color: var(--ink-2); font-weight: 600; }
+  .stat .v { font-size: 1.55rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .stat .v.good { color: var(--good); }
+  .stat .v.busy { color: var(--busy); }
+  .stat .v.muted { color: var(--ink-2); }
+  .summary .upd { margin-left: auto; font-size: .74rem; color: var(--ink-3); }
+  .divider { width: 1px; height: 26px; background: var(--line); }
+
+  .banner {
+    border-radius: 16px; padding: 13px 18px; font-size: .82rem; margin: 0 0 20px;
+    line-height: 1.6; backdrop-filter: blur(8px);
+  }
+  .banner.demo { background: rgba(231,196,106,.08); border: 1px solid rgba(231,196,106,.25); color: #e9d9a8; }
+  .banner.err { background: rgba(255,122,122,.07); border: 1px solid rgba(255,122,122,.25); color: #ffb4b4; word-break: break-all; }
+  code { background: rgba(255,255,255,.08); padding: 1px 7px; border-radius: 6px; font-size: .9em; }
+
+  /* ---------- cards ---------- */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; align-items: start; }
+  .gcol { display: flex; flex-direction: column; gap: 16px; }
+  .gcol-head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px; border-radius: 16px;
+    font-size: 1.15rem; font-weight: 850; letter-spacing: .12em;
+  }
+  .gcol-head .big-icon { font-size: 1.5rem; }
+  .gcol-head.male { color: #cfe2ff; background: rgba(110,168,255,.13); border: 1.5px solid rgba(110,168,255,.4); }
+  .gcol-head.female { color: #ffdce8; background: rgba(255,143,179,.12); border: 1.5px solid rgba(255,143,179,.4); }
+  .gcol-head .floors-note { margin-left: auto; font-size: .74rem; font-weight: 500; letter-spacing: 0; color: var(--ink-2); }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    position: relative; overflow: hidden;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-soft);
+    background: linear-gradient(150deg, rgba(255,255,255,.055), rgba(255,255,255,.018) 60%);
+    backdrop-filter: blur(12px);
+    padding: 24px 26px 22px;
+    transition: transform .25s ease, border-color .25s ease;
+  }
+  .card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.14); }
+  .card::before {
+    content: ''; position: absolute; inset: 0 0 auto 0; height: 3px;
+    background: var(--idle); opacity: .5; transition: all .4s;
+  }
+  .card.available::before { background: linear-gradient(90deg, transparent, var(--good) 30%, var(--good) 70%, transparent); opacity: .8; }
+  .card.occupied::before { background: linear-gradient(90deg, transparent, var(--busy) 30%, var(--busy) 70%, transparent); opacity: .9; }
+
+  .floor-num {
+    position: absolute; right: 18px; bottom: 4px;
+    font-size: 5.4rem; font-weight: 850; letter-spacing: -.05em;
+    color: rgba(255,255,255,.045); line-height: 1; user-select: none; pointer-events: none;
+  }
+  .card-top { display: flex; align-items: center; justify-content: space-between; }
+  .floor-label { font-size: 1.02rem; font-weight: 750; letter-spacing: -.01em; }
+  .gender {
+    font-size: 1.02rem; font-weight: 850; padding: 8px 18px; border-radius: 999px;
+    letter-spacing: .09em; display: inline-flex; align-items: center; gap: 7px;
+  }
+  .gender .gicon { font-size: 1.05rem; line-height: 1; }
+  .gender.male { color: #cfe2ff; background: rgba(110,168,255,.22); border: 1.5px solid rgba(110,168,255,.55); box-shadow: 0 0 16px rgba(110,168,255,.15); }
+  .gender.female { color: #ffdce8; background: rgba(255,143,179,.2); border: 1.5px solid rgba(255,143,179,.55); box-shadow: 0 0 16px rgba(255,143,179,.15); }
+
+  .sensors { display: flex; gap: 10px; margin-top: 10px; }
+  .sensor { display: inline-flex; align-items: center; gap: 5px; font-size: .67rem; color: var(--ink-3); font-weight: 500; }
+  .sensor::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--ink-3); opacity: .5; }
+  .sensor.on { color: var(--ink-2); }
+  .sensor.on::before { background: var(--teal); opacity: 1; box-shadow: 0 0 6px rgba(53,196,181,.6); }
+
+  .status-row { display: flex; align-items: center; gap: 14px; margin: 22px 0 6px; }
+  .lamp {
+    width: 46px; height: 46px; border-radius: 50%; flex: none;
+    display: grid; place-items: center; position: relative;
+    background: rgba(255,255,255,.05); border: 1px solid var(--line);
+  }
+  .lamp .core { width: 14px; height: 14px; border-radius: 50%; background: var(--idle); }
+  .available .lamp { background: var(--good-soft); border-color: rgba(61,220,151,.35); }
+  .available .lamp .core { background: var(--good); box-shadow: 0 0 14px rgba(61,220,151,.9); }
+  .occupied .lamp { background: var(--busy-soft); border-color: rgba(255,122,122,.4); }
+  .occupied .lamp .core { background: var(--busy); box-shadow: 0 0 14px rgba(255,122,122,.9); }
+  .occupied .lamp::after {
+    content: ''; position: absolute; inset: -1px; border-radius: 50%;
+    border: 1px solid rgba(255,122,122,.55); animation: pulse 1.8s ease-out infinite;
+  }
+  @keyframes pulse {
+    0% { transform: scale(1); opacity: .9; }
+    100% { transform: scale(1.65); opacity: 0; }
+  }
+  .status-text .big { font-size: 1.62rem; font-weight: 820; letter-spacing: -.02em; }
+  .available .status-text .big { color: var(--good); }
+  .occupied .status-text .big { color: var(--busy); }
+  .unknown .status-text .big { color: var(--idle); }
+  .status-text .detail { font-size: .78rem; color: var(--ink-2); margin-top: 3px; }
+
+  .meta { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  .tag {
+    font-size: .7rem; font-weight: 600; padding: 5px 12px; border-radius: 9px;
+    background: rgba(255,255,255,.05); border: 1px solid var(--line-soft); color: var(--ink-2);
+  }
+  .tag.busy { color: #ffb0b0; background: var(--busy-soft); border-color: rgba(255,122,122,.25); }
+  .tag.good { color: #8fe9c0; background: var(--good-soft); border-color: rgba(61,220,151,.22); }
+
+  footer {
+    max-width: 1180px; margin: 34px auto 0; padding: 0 28px;
+    text-align: center; font-size: .74rem; color: var(--ink-3); line-height: 1.9;
+  }
+  footer .sep { margin: 0 10px; opacity: .5; }
+
+  /* ---------- dialog ---------- */
+  dialog {
+    border: 1px solid var(--line); border-radius: 20px; padding: 0;
+    max-width: 680px; width: 92vw; color: var(--ink);
+    background: linear-gradient(160deg, #142320, #0f1a18);
+    box-shadow: 0 24px 80px rgba(0,0,0,.6);
+  }
+  dialog::backdrop { background: rgba(5,10,9,.7); backdrop-filter: blur(4px); }
+  .dlg-head { padding: 20px 24px 14px; font-weight: 750; font-size: 1.02rem; border-bottom: 1px solid var(--line-soft); }
+  .dlg-body { padding: 20px 24px; max-height: 62vh; overflow-y: auto; }
+  .hint { font-size: .78rem; color: var(--ink-2); line-height: 1.65; margin-bottom: 16px; }
+  .map-row { display: grid; grid-template-columns: 92px 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .map-row label { font-weight: 650; font-size: .84rem; }
+  .map-row input, .map-row select {
+    width: 100%; padding: 9px 11px; border-radius: 10px; font-size: .78rem;
+    border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--ink);
+  }
+  .map-row select option { background: #142320; }
+  .dlg-foot { padding: 16px 24px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--line-soft); }
+  .btn { padding: 10px 20px; border-radius: 12px; border: none; cursor: pointer; font-size: .84rem; font-weight: 650; font-family: inherit; }
+  .btn.primary { background: var(--teal); color: #06211e; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.plain { background: rgba(255,255,255,.07); color: var(--ink-2); border: 1px solid var(--line); }
+  .btn.plain:hover { color: var(--ink); }
+
+  @media (max-width: 640px) {
+    header { padding: 24px 18px 4px; }
+    main { padding: 12px 18px 50px; }
+    .clock .time { font-size: 1.3rem; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="word">Aqara Life</div>
+    <h1>화장실 재실 현황</h1>
+    <div class="sub">1인용 화장실 · 재실센서 + 열림감지센서 실시간 판정</div>
+  </div>
+  <div class="headright">
+    <div class="clock">
+      <div class="time" id="clock">--:--:--</div>
+      <div class="date" id="date"></div>
+    </div>
+    <div class="conn" id="conn"><span class="dot"></span><span id="connText">연결 확인 중</span></div>
+    <button class="gearbtn" onclick="openSettings()" title="센서 매핑">⚙</button>
+  </div>
+</header>
+
+<main>
+  <div id="demoBanner" class="banner demo" style="display:none">
+    <b>데모 모드</b> — 실제 연동은 <code>config.json</code> 의 <code>apiKey</code> 또는 <code>.env</code> 의 <code>AQARA_API_KEY</code> 를 설정한 뒤 재시작하세요.
+  </div>
+  <div id="errBanner" class="banner err" style="display:none"></div>
+
+  <div class="summary">
+    <div class="stat"><span class="k">사용 가능</span><span class="v good" id="cntAvail">–</span></div>
+    <div class="divider"></div>
+    <div class="stat"><span class="k">사용 중</span><span class="v busy" id="cntOcc">–</span></div>
+    <div class="divider"></div>
+    <div class="stat"><span class="k">센서 대기</span><span class="v muted" id="cntUnk">–</span></div>
+    <div class="upd" id="lastUpd">갱신 대기 중</div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <footer>
+    남자 화장실 <b>지하 1층 · 2층 · 4층</b><span class="sep">|</span>여자 화장실 <b>1층 · 3층 · 5층</b><br>
+    Aqara Hub ×6 · 재실센서 ×6 · 열림감지센서 ×6 <span class="sep">·</span> 5초 간격 자동 갱신
+  </footer>
+</main>
+
+<dialog id="dlg">
+  <div class="dlg-head">센서 ↔ 층 매핑</div>
+  <div class="dlg-body">
+    <div class="hint">
+      센서 이름에 <b>"○층 남자/여자 화장실"</b>이 포함되면 자동으로 연결됩니다.
+      수동 지정이 필요하면 아래에서 선택하세요.
+    </div>
+    <button class="btn plain" style="margin-bottom:16px" onclick="loadDevices()">기기 불러오기</button>
+    <div class="map-row" style="font-size:.72rem;color:var(--ink-3)">
+      <span>층</span><span>재실센서</span><span>열림감지센서</span>
+    </div>
+    <div id="mapRows"></div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn plain" onclick="dlg.close()">취소</button>
+    <button class="btn primary" onclick="saveMapping()">저장</button>
+  </div>
+</dialog>
+
+<script>
+const grid = document.getElementById('grid');
+const dlg = document.getElementById('dlg');
+let cfg = null;
+let deviceList = [];
+
+const GENDER = { male: { label: 'MEN', icon: '🚹', cls: 'male' }, female: { label: 'WOMEN', icon: '🚺', cls: 'female' } };
+const NUM = { B1: 'B1', '1F': '1F', '2F': '2F', '3F': '3F', '4F': '4F', '5F': '5F' };
+
+function tickClock() {
+  const n = new Date();
+  const p = (x) => String(x).padStart(2, '0');
+  document.getElementById('clock').textContent = `${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+  document.getElementById('date').textContent = n.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+}
+tickClock(); setInterval(tickClock, 1000);
+
+function statusView(f) {
+  if (f.status === 'occupied') return { text: '사용 중' };
+  if (f.status === 'available') return { text: '사용 가능' };
+  return { text: '확인 불가' };
+}
+
+function render(data) {
+  const conn = document.getElementById('conn');
+  const connText = document.getElementById('connText');
+  document.getElementById('demoBanner').style.display = data.demo ? '' : 'none';
+  const errBanner = document.getElementById('errBanner');
+  if (data.error) {
+    errBanner.style.display = '';
+    errBanner.textContent = '연동 오류: ' + data.error;
+    conn.className = 'conn err'; connText.textContent = '연동 오류';
+  } else {
+    errBanner.style.display = 'none';
+    conn.className = 'conn ok';
+    connText.textContent = data.demo ? '데모 모드' : 'Aqara 연동됨';
+  }
+
+  let avail = 0, occ = 0, unk = 0;
+  grid.innerHTML = '';
+  const colMale = document.createElement('div');
+  colMale.className = 'gcol';
+  colMale.innerHTML = `<div class="gcol-head male"><span class="big-icon">🚹</span>MEN · 남자<span class="floors-note">지하 1층 · 2층 · 4층</span></div>`;
+  const colFemale = document.createElement('div');
+  colFemale.className = 'gcol';
+  colFemale.innerHTML = `<div class="gcol-head female"><span class="big-icon">🚺</span>WOMEN · 여자<span class="floors-note">1층 · 3층 · 5층</span></div>`;
+  (data.floors || []).forEach(f => {
+    if (f.status === 'available') avail++;
+    else if (f.status === 'occupied') occ++;
+    else unk++;
+    const g = GENDER[f.gender] || GENDER.male;
+    const sv = statusView(f);
+    const m = f.mapped || {};
+    const card = document.createElement('div');
+    card.className = 'card ' + f.status;
+    card.innerHTML = `
+      <div class="floor-num">${NUM[f.id] || f.id}</div>
+      <div class="card-top">
+        <span class="floor-label">${f.label}</span>
+        <span class="gender ${g.cls}"><span class="gicon">${g.icon}</span>${g.label}</span>
+      </div>
+      <div class="sensors">
+        <span class="sensor ${m.presence ? 'on' : ''}">재실센서 ${m.presence ? '연결됨' : '미연결'}</span>
+        <span class="sensor ${m.door ? 'on' : ''}">문센서 ${m.door ? '연결됨' : '미연결'}</span>
+      </div>
+      <div class="status-row">
+        <div class="lamp"><div class="core"></div></div>
+        <div class="status-text">
+          <div class="big">${sv.text}</div>
+          <div class="detail">${f.detail || ''}</div>
+        </div>
+      </div>
+      <div class="meta">
+        <span class="tag ${f.presence === true ? 'busy' : f.presence === false ? 'good' : ''}">재실 ${f.presence === true ? '있음' : f.presence === false ? '없음' : '미확인'}</span>
+        <span class="tag ${f.doorOpen === false ? 'busy' : f.doorOpen === true ? 'good' : ''}">문 ${f.doorOpen === true ? '열림' : f.doorOpen === false ? '닫힘' : '미확인'}</span>
+      </div>`;
+    (f.gender === 'female' ? colFemale : colMale).appendChild(card);
+  });
+  grid.appendChild(colMale);
+  grid.appendChild(colFemale);
+  document.getElementById('cntAvail').textContent = avail;
+  document.getElementById('cntOcc').textContent = occ;
+  document.getElementById('cntUnk').textContent = unk;
+  if (data.updatedAt) {
+    document.getElementById('lastUpd').textContent =
+      '마지막 갱신 ' + new Date(data.updatedAt).toLocaleTimeString('ko-KR', { hour12: false });
+  }
+}
+
+async function tick() {
+  try {
+    const r = await fetch('/api/status');
+    render(await r.json());
+  } catch (e) {
+    document.getElementById('connText').textContent = '서버 연결 끊김';
+    document.getElementById('conn').className = 'conn err';
+  }
+}
+tick();
+setInterval(tick, 3000);
+
+// ------- 설정(매핑) -------
+async function openSettings() {
+  const r = await fetch('/api/config');
+  cfg = await r.json();
+  drawMapRows();
+  dlg.showModal();
+}
+
+function drawMapRows() {
+  const wrap = document.getElementById('mapRows');
+  wrap.innerHTML = '';
+  cfg.floors.forEach(f => {
+    const row = document.createElement('div');
+    row.className = 'map-row';
+    row.innerHTML = `
+      <label>${f.label}</label>
+      ${fieldHtml(f.id, 'presence', f.presenceDeviceId)}
+      ${fieldHtml(f.id, 'door', f.doorDeviceId)}`;
+    wrap.appendChild(row);
+  });
+}
+
+function fieldHtml(fid, kind, val) {
+  if (deviceList.length) {
+    const opts = ['<option value="">— 선택 —</option>'].concat(
+      deviceList.map(d => `<option value="${d.id}" ${d.id === val ? 'selected' : ''}>${d.name}${d.type ? ' · ' + d.type : ''}</option>`)
+    ).join('');
+    return `<select data-fid="${fid}" data-kind="${kind}">${opts}</select>`;
+  }
+  return `<input data-fid="${fid}" data-kind="${kind}" value="${val || ''}" placeholder="디바이스 ID">`;
+}
+
+async function loadDevices() {
+  try {
+    const r = await fetch('/api/devices');
+    const j = await r.json();
+    deviceList = j.devices || [];
+    if (!deviceList.length) alert('기기 목록을 가져오지 못했습니다. ID를 직접 입력해주세요.');
+    drawMapRows();
+  } catch (e) { alert('기기 조회 실패: ' + e); }
+}
+
+async function saveMapping() {
+  const floors = {};
+  document.querySelectorAll('#mapRows [data-fid]').forEach(el => {
+    const fid = el.dataset.fid;
+    floors[fid] = floors[fid] || { id: fid };
+    floors[fid][el.dataset.kind === 'presence' ? 'presenceDeviceId' : 'doorDeviceId'] = el.value;
+  });
+  await fetch('/api/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ floors: Object.values(floors) }),
+  });
+  dlg.close();
+  tick();
+}
+</script>
+</body>
+</html>

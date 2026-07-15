@@ -113,6 +113,7 @@
   .gcol-head .big-icon { font-size: 1.5rem; }
   .gcol-head.male { color: #cfe2ff; background: rgba(110,168,255,.13); border: 1.5px solid rgba(110,168,255,.4); }
   .gcol-head.female { color: #ffdce8; background: rgba(255,143,179,.12); border: 1.5px solid rgba(255,143,179,.4); }
+  .gcol-head.unisex { color: #c9f3e6; background: rgba(84,222,190,.11); border: 1.5px solid rgba(84,222,190,.4); }
   .gcol-head .floors-note { margin-left: auto; font-size: .74rem; font-weight: 500; letter-spacing: 0; color: var(--ink-2); }
   @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
   .card {
@@ -146,6 +147,7 @@
   .gender .gicon { font-size: 1.05rem; line-height: 1; }
   .gender.male { color: #cfe2ff; background: rgba(110,168,255,.22); border: 1.5px solid rgba(110,168,255,.55); box-shadow: 0 0 16px rgba(110,168,255,.15); }
   .gender.female { color: #ffdce8; background: rgba(255,143,179,.2); border: 1.5px solid rgba(255,143,179,.55); box-shadow: 0 0 16px rgba(255,143,179,.15); }
+  .gender.unisex { color: #c9f3e6; background: rgba(84,222,190,.18); border: 1.5px solid rgba(84,222,190,.55); box-shadow: 0 0 16px rgba(84,222,190,.15); }
 
   .sensors { display: flex; gap: 10px; margin-top: 10px; }
   .sensor { display: inline-flex; align-items: center; gap: 5px; font-size: .67rem; color: var(--ink-3); font-weight: 500; }
@@ -289,7 +291,11 @@ const dlg = document.getElementById('dlg');
 let cfg = null;
 let deviceList = [];
 
-const GENDER = { male: { label: 'MEN', icon: '🚹', cls: 'male' }, female: { label: 'WOMEN', icon: '🚺', cls: 'female' } };
+const GENDER = {
+  male:   { label: 'MEN', icon: '🚹', cls: 'male' },
+  female: { label: 'WOMEN', icon: '🚺', cls: 'female' },
+  unisex: { label: '공용', icon: '🚻', cls: 'unisex' },
+};
 const NUM = { B1: 'B1', '1F': '1F', '2F': '2F', '3F': '3F', '4F': '4F', '5F': '5F' };
 
 function tickClock() {
@@ -326,9 +332,9 @@ function render(data) {
   const colMale = document.createElement('div');
   colMale.className = 'gcol';
   colMale.innerHTML = `<div class="gcol-head male"><span class="big-icon">🚹</span>MEN · 남자<span class="floors-note">지하 1층 · 2층 · 4층</span></div>`;
-  const colFemale = document.createElement('div');
-  colFemale.className = 'gcol';
-  colFemale.innerHTML = `<div class="gcol-head female"><span class="big-icon">🚺</span>WOMEN · 여자<span class="floors-note">1층 · 3층 · 5층</span></div>`;
+  const colRight = document.createElement('div');
+  colRight.className = 'gcol';
+  const unisexCards = [], femaleCards = [];
   (data.floors || []).forEach(f => {
     if (f.status === 'available') avail++;
     else if (f.status === 'occupied') occ++;
@@ -359,10 +365,26 @@ function render(data) {
         <span class="tag ${f.presence === true ? 'busy' : f.presence === false ? 'good' : ''}">재실 ${f.presence === true ? '있음' : f.presence === false ? '없음' : '미확인'}</span>
         <span class="tag ${f.doorOpen === false ? 'busy' : f.doorOpen === true ? 'good' : ''}">문 ${f.doorOpen === true ? '열림' : f.doorOpen === false ? '닫힘' : '미확인'}</span>
       </div>`;
-    (f.gender === 'female' ? colFemale : colMale).appendChild(card);
+    if (f.gender === 'female') femaleCards.push(card);
+    else if (f.gender === 'unisex') unisexCards.push(card);
+    else colMale.appendChild(card);
   });
+  if (unisexCards.length) {
+    const h = document.createElement('div');
+    h.className = 'gcol-head unisex';
+    h.innerHTML = `<span class="big-icon">🚻</span>ALL · 공용<span class="floors-note">1층</span>`;
+    colRight.appendChild(h);
+    unisexCards.forEach(c => colRight.appendChild(c));
+  }
+  if (femaleCards.length) {
+    const h = document.createElement('div');
+    h.className = 'gcol-head female';
+    h.innerHTML = `<span class="big-icon">🚺</span>WOMEN · 여자<span class="floors-note">3층 · 5층</span>`;
+    colRight.appendChild(h);
+    femaleCards.forEach(c => colRight.appendChild(c));
+  }
   grid.appendChild(colMale);
-  grid.appendChild(colFemale);
+  grid.appendChild(colRight);
   document.getElementById('cntAvail').textContent = avail;
   document.getElementById('cntOcc').textContent = occ;
   document.getElementById('cntUnk').textContent = unk;
@@ -382,7 +404,7 @@ async function tick() {
   }
 }
 tick();
-setInterval(tick, 3000);
+setInterval(tick, 2000);
 
 // ------- 설정(매핑) -------
 async function openSettings() {

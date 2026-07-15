@@ -420,8 +420,10 @@ function judgeFloor(floor, statusRows) {
     if (lo !== null && (lv === null || lo > lv)) {
       out.presence = true; appSynced = true; appAt = lo;
     } else if (lv !== null && (lo === null || lv > lo)) {
-      // 깜빡이는 층은 무인이 90초 유지된 뒤에만 '사용 가능' 확정
-      if (flappy && nowMs - lv < 90000) {
+      // 깜빡이는 층은 무인 기록을 처음 확인한 시점부터 20초 유지된 뒤에만 '사용 가능' 확정
+      const st2 = floorState[floor.id] || (floorState[floor.id] = {});
+      if (st2.lastVacantTs !== lv) { st2.lastVacantTs = lv; st2.vacantSeenAt = nowMs; }
+      if (flappy && nowMs - st2.vacantSeenAt < 20000) {
         out.presence = true; appSynced = true; appAt = lo || lv; stabilizing = true;
       } else {
         out.presence = false; appSynced = true; appAt = lv;

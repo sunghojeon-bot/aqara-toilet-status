@@ -310,8 +310,11 @@ async function fetchAutoSync() {
       const kind = /유인|재실\s*있|occupied/i.test(name) ? 'occupied'
         : /무인|재실\s*없|vacant/i.test(name) ? 'vacant' : null;
       if (!kind) continue;
-      const times = (((item.execute_logs || {}).success || {}).execute_time || [])
-        .map(parseAqaraTime).filter(Boolean);
+      const logs = item.execute_logs || {};
+      const times = [
+        ...(((logs.success || {}).execute_time) || []),
+        ...(((logs.failed || {}).execute_time) || []), // 동작 실패해도 트리거는 발생한 것
+      ].map(parseAqaraTime).filter(Boolean);
       if (!times.length) continue;
       const latest = Math.max(...times);
       for (const [fid, pat] of Object.entries(FLOOR_PATTERNS)) {
@@ -407,6 +410,14 @@ function judgeFloor(floor, statusRows) {
       out.presence = true; appSynced = true; appAt = as.occupiedAt;
     } else if (as.vacantAt && (!as.occupiedAt || as.vacantAt > as.occupiedAt)) {
       out.presence = false; appSynced = true; appAt = as.vacantAt;
+    }
+  }
+  // 하이브리드: 앱 동기화가 '무인'이어도, 무인 전환 이후의 새 움직임이 감지되면
+  // 즉시 '사용 중' (자동화 이력은 분 단위라 입장 직후 최대 1분 늦게 반영되는 것 보완)
+  if (appSynced && out.presence === false && out.lastMotion) {
+    const lm = Date.parse(out.lastMotion);
+    if (lm >= appAt + 60000 && (Date.now() - lm) <= thresholdMs) {
+      out.presence = true; appSynced = false; // 감지 기반 즉시 반영
     }
   }
   out.appSync = appSynced;

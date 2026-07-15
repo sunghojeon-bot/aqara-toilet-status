@@ -37,7 +37,7 @@ const DEFAULT_CONFIG = {
   apiKey: '',                     // .env 가 없을 때 사용
   mcpUrl: 'https://agent.aqara.com/open/mcp',
   pollIntervalMs: 3000,
-  occupiedThresholdSec: 90,       // 마지막 감지 후 N초 이내면 "사용 중"
+  occupiedThresholdSec: 15,       // 마지막 감지 후 N초 이내면 "사용 중"
   doorGraceSec: 120,              // 문 닫힘 직후 재실 확인 유예시간(초)
   tzOffsetHours: 9,               // Aqara 응답 시각의 타임존 (KST)
   autoMap: true,                  // 이름에 "화장실" 포함 센서 자동 매핑
@@ -304,7 +304,7 @@ function judgeFloor(floor, statusRows) {
     lastMotion: null, online: null,
     mapped: { presence: !!floor.presenceDeviceId, door: !!floor.doorDeviceId },
   };
-  const thresholdMs = Math.max(30, Number(config.occupiedThresholdSec || 90)) * 1000;
+  const thresholdMs = Math.max(10, Number(config.occupiedThresholdSec || 15)) * 1000;
 
   const rowOf = (id) => statusRows.find((r) => r['endpoint id'] === id);
 

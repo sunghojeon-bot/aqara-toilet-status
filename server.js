@@ -283,6 +283,50 @@ function autoMapFloors(devices) {
 }
 
 // ---------------------------------------------------------------------------
+// 앱 동기화: "유인/무인" 자동화 실행 이력 (앱과 동일한 전환 시각)
+//   Aqara 앱에서 층별로 자동화 2개를 만들어두면 자동 활성화됩니다.
+//   예) 이름 "2층 유인" (재실센서: 사람 있음일 때), "2층 무인" (사람 없음일 때)
+//   이름에 층 + 유인/무인 이 들어가면 됩니다. 없으면 기존 감지시각 방식으로 동작.
+// ---------------------------------------------------------------------------
+let autoSync = { at: 0, floors: {} };
+
+function kstString(ms) {
+  const tz = Number(config.tzOffsetHours ?? 9);
+  const d = new Date(ms + tz * 3600000);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
+async function fetchAutoSync() {
+  try {
+    const now = Date.now();
+    const data = await mcpCallTool('automation_execution_history_inquiry', {
+      time_range: [kstString(now - 6 * 3600000), kstString(now + 60000)],
+    });
+    const list = data && data.outputs && Array.isArray(data.outputs.data) ? data.outputs.data : [];
+    const floors = {};
+    for (const item of list) {
+      const name = String(item.automation_name || '');
+      const kind = /유인|재실\s*있|occupied/i.test(name) ? 'occupied'
+        : /무인|재실\s*없|vacant/i.test(name) ? 'vacant' : null;
+      if (!kind) continue;
+      const times = (((item.execute_logs || {}).success || {}).execute_time || [])
+        .map(parseAqaraTime).filter(Boolean);
+      if (!times.length) continue;
+      const latest = Math.max(...times);
+      for (const [fid, pat] of Object.entries(FLOOR_PATTERNS)) {
+        if (!pat.test(name)) continue;
+        const f = floors[fid] || (floors[fid] = { occupiedAt: null, vacantAt: null });
+        const key = kind === 'occupied' ? 'occupiedAt' : 'vacantAt';
+        if (!f[key] || latest > f[key]) f[key] = latest;
+        break; // 첫 매칭 층만 사용
+      }
+    }
+    autoSync = { at: now, floors };
+  } catch { /* 실패 시 이전 값 유지 (2분 이상 오래되면 판정에서 무시) */ }
+}
+
+// ---------------------------------------------------------------------------
 // 층별 판정
 // ---------------------------------------------------------------------------
 function minutesAgo(ms) {
@@ -355,9 +399,21 @@ function judgeFloor(floor, statusRows) {
   if (out.doorOpen === true) stt.doorClosedAt = null;
   stt.prevDoorOpen = out.doorOpen;
 
+  // ---- 앱 동기화 (유인/무인 자동화 실행 이력이 있으면 그 값을 그대로 사용) ----
+  let appSynced = false; let appAt = null;
+  const as = (Date.now() - autoSync.at < 2 * 60000) ? autoSync.floors[floor.id] : null;
+  if (as && (as.occupiedAt || as.vacantAt) && as.occupiedAt !== as.vacantAt) {
+    if (as.occupiedAt && (!as.vacantAt || as.occupiedAt > as.vacantAt)) {
+      out.presence = true; appSynced = true; appAt = as.occupiedAt;
+    } else if (as.vacantAt && (!as.occupiedAt || as.vacantAt > as.occupiedAt)) {
+      out.presence = false; appSynced = true; appAt = as.vacantAt;
+    }
+  }
+  out.appSync = appSynced;
+
   // ---- 1인용 화장실 판정 (재실센서 단독 기준) ----
-  //   재실 감지 (threshold 내 움직임) → 사용 중
-  //   재실 없음                     → 사용 가능
+  //   앱 동기화 가능 시: 앱의 유인/무인 전환과 동일
+  //   아니면: 마지막 감지 후 threshold 이내 → 사용 중
   //   문 열림/닫힘은 참고 표시만 하고 판정에는 사용하지 않음
   const ago = out.lastMotion ? ` · 마지막 감지 ${minutesAgo(Date.parse(out.lastMotion))}` : '';
 
@@ -366,9 +422,11 @@ function judgeFloor(floor, statusRows) {
   } else if (out.online === false) {
     out.status = 'unknown'; out.detail = '센서 오프라인';
   } else if (out.presence === true) {
-    out.status = 'occupied'; out.detail = '재실 감지' + ago;
+    out.status = 'occupied';
+    out.detail = appSynced ? `유인 · 앱 동기화 (${minutesAgo(appAt)} 전환)` : '재실 감지' + ago;
   } else if (out.presence === false) {
-    out.status = 'available'; out.detail = '재실 없음' + ago;
+    out.status = 'available';
+    out.detail = appSynced ? `무인 · 앱 동기화 (${minutesAgo(appAt)} 전환)` : '재실 없음' + ago;
   } else {
     out.status = 'unknown'; out.detail = '상태 조회 대기';
   }
@@ -403,6 +461,7 @@ async function pollOnce() {
       const data = await mcpCallTool('device_status_inquiry', { device_ids: ids });
       lastRaw = data;
       statusRows = tableToObjects(data && data.outputs);
+      await fetchAutoSync(); // 앱 동기화용 자동화 실행 이력
     }
     cache = {
       updatedAt: new Date().toISOString(), demo: false, error: null,

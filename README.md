@@ -56,3 +56,5 @@ claude mcp add --transport http aqara https://agent.aqara.com/open/mcp \
 - `GET /api/devices` — 계정 기기 목록 (raw 포함)
 - `GET /api/tools` — MCP 서버가 제공하는 도구 목록
 - `GET /api/raw` — 마지막 상태 조회 원본 응답 (파싱 문제 디버깅용)
+
+<!-- deploy trigger 2026-07-15 -->

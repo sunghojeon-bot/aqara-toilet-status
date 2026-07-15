@@ -316,12 +316,10 @@ async function fetchAutoSync() {
         ...(((logs.failed || {}).execute_time) || []), // 동작 실패해도 트리거는 발생한 것
       ].map(parseAqaraTime).filter(Boolean);
       if (!times.length) continue;
-      const latest = Math.max(...times);
       for (const [fid, pat] of Object.entries(FLOOR_PATTERNS)) {
         if (!pat.test(name)) continue;
-        const f = floors[fid] || (floors[fid] = { occupiedAt: null, vacantAt: null });
-        const key = kind === 'occupied' ? 'occupiedAt' : 'vacantAt';
-        if (!f[key] || latest > f[key]) f[key] = latest;
+        const f = floors[fid] || (floors[fid] = { occupiedTimes: [], vacantTimes: [] });
+        (kind === 'occupied' ? f.occupiedTimes : f.vacantTimes).push(...times);
         break; // 첫 매칭 층만 사용
       }
     }
@@ -403,13 +401,34 @@ function judgeFloor(floor, statusRows) {
   stt.prevDoorOpen = out.doorOpen;
 
   // ---- 앱 동기화 (유인/무인 자동화 실행 이력이 있으면 그 값을 그대로 사용) ----
-  let appSynced = false; let appAt = null;
+  let appSynced = false; let appAt = null; let stabilizing = false;
   const as = (Date.now() - autoSync.at < 2 * 60000) ? autoSync.floors[floor.id] : null;
-  if (as && (as.occupiedAt || as.vacantAt) && as.occupiedAt !== as.vacantAt) {
-    if (as.occupiedAt && (!as.vacantAt || as.occupiedAt > as.vacantAt)) {
-      out.presence = true; appSynced = true; appAt = as.occupiedAt;
-    } else if (as.vacantAt && (!as.occupiedAt || as.vacantAt > as.occupiedAt)) {
-      out.presence = false; appSynced = true; appAt = as.vacantAt;
+  if (as) {
+    const lo = (as.occupiedTimes && as.occupiedTimes.length) ? Math.max(...as.occupiedTimes) : null;
+    const lv = (as.vacantTimes && as.vacantTimes.length) ? Math.max(...as.vacantTimes) : null;
+    // 깜빡임(무인→유인 재전환이 90초 이내) 이 최근 15분 내 있었던 층인지
+    const nowMs = Date.now();
+    let flappy = false;
+    for (const to of (as.occupiedTimes || [])) {
+      if (nowMs - to > 15 * 60000) continue;
+      for (const tv of (as.vacantTimes || [])) {
+        const d = to - tv;
+        if (d >= 0 && d <= 90000) { flappy = true; break; }
+      }
+      if (flappy) break;
+    }
+    if (lo !== null && (lv === null || lo > lv)) {
+      out.presence = true; appSynced = true; appAt = lo;
+    } else if (lv !== null && (lo === null || lv > lo)) {
+      // 깜빡이는 층은 무인이 90초 유지된 뒤에만 '사용 가능' 확정
+      if (flappy && nowMs - lv < 90000) {
+        out.presence = true; appSynced = true; appAt = lo || lv; stabilizing = true;
+      } else {
+        out.presence = false; appSynced = true; appAt = lv;
+      }
+    } else if (lo !== null && lv !== null && lo === lv && flappy) {
+      // 같은 분에 유인/무인 동시 기록 + 깜빡임 → 사람 있는 것으로 유지
+      out.presence = true; appSynced = true; appAt = lo; stabilizing = true;
     }
   }
   // 하이브리드: 앱 동기화가 '무인'이어도, 무인 전환 이후의 새 움직임이 감지되면
@@ -436,7 +455,9 @@ function judgeFloor(floor, statusRows) {
     out.status = 'unknown'; out.detail = '센서 오프라인';
   } else if (out.presence === true) {
     out.status = 'occupied';
-    out.detail = appSynced ? `유인 · 앱 동기화 (${minutesAgo(appAt)} 전환)` : '재실 감지' + ago;
+    out.detail = appSynced
+      ? (stabilizing ? '유인 · 앱 동기화 (안정화 중)' : `유인 · 앱 동기화 (${minutesAgo(appAt)} 전환)`)
+      : '재실 감지' + ago;
   } else if (out.presence === false) {
     out.status = 'available';
     out.detail = appSynced ? `무인 · 앱 동기화 (${minutesAgo(appAt)} 전환)` : '재실 없음' + ago;

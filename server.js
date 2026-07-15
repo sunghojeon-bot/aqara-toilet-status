@@ -416,7 +416,9 @@ function judgeFloor(floor, statusRows) {
   // 즉시 '사용 중' (자동화 이력은 분 단위라 입장 직후 최대 1분 늦게 반영되는 것 보완)
   if (appSynced && out.presence === false && out.lastMotion) {
     const lm = Date.parse(out.lastMotion);
-    if (lm >= appAt + 60000 && (Date.now() - lm) <= thresholdMs) {
+    // 여유 120초: 자동화 시각이 분 단위 절삭이라, 퇴장 직후의 마지막 움직임을
+    // 재입장으로 오인하지 않도록 무인 전환 후 2분 이상 지난 새 움직임만 인정
+    if (lm >= appAt + 120000 && (Date.now() - lm) <= thresholdMs) {
       out.presence = true; appSynced = false; // 감지 기반 즉시 반영
     }
   }
@@ -519,7 +521,12 @@ function writeLog() {
   } catch { /* ignore */ }
 }
 
-setInterval(pollOnce, Math.max(2000, config.pollIntervalMs || 3000));
+let pollBusy = false;
+setInterval(async () => {
+  if (pollBusy) return; // 이전 폴링이 끝나기 전 중복 실행 방지
+  pollBusy = true;
+  try { await pollOnce(); } finally { pollBusy = false; }
+}, Math.max(2000, config.pollIntervalMs || 3000));
 pollOnce();
 
 // ---------------------------------------------------------------------------

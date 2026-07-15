@@ -36,14 +36,14 @@ const DEFAULT_CONFIG = {
   homeName: 'AL Office',          // MCP에서 switch_home 할 홈 이름
   apiKey: '',                     // .env 가 없을 때 사용
   mcpUrl: 'https://agent.aqara.com/open/mcp',
-  pollIntervalMs: 5000,
-  occupiedThresholdSec: 120,      // 마지막 감지 후 N초 이내면 "사용 중"
+  pollIntervalMs: 3000,
+  occupiedThresholdSec: 90,       // 마지막 감지 후 N초 이내면 "사용 중"
   doorGraceSec: 120,              // 문 닫힘 직후 재실 확인 유예시간(초)
   tzOffsetHours: 9,               // Aqara 응답 시각의 타임존 (KST)
   autoMap: true,                  // 이름에 "화장실" 포함 센서 자동 매핑
   floors: [
     { id: 'B1', label: '지하 1층', gender: 'male',   presenceDeviceId: '', doorDeviceId: '' },
-    { id: '1F', label: '1층',      gender: 'female', presenceDeviceId: '', doorDeviceId: '' },
+    { id: '1F', label: '1층',      gender: 'unisex', presenceDeviceId: '', doorDeviceId: '' },
     { id: '2F', label: '2층',      gender: 'male',   presenceDeviceId: '', doorDeviceId: '' },
     { id: '3F', label: '3층',      gender: 'female', presenceDeviceId: '', doorDeviceId: '' },
     { id: '4F', label: '4층',      gender: 'male',   presenceDeviceId: '', doorDeviceId: '' },
@@ -56,6 +56,11 @@ function loadConfig() {
     const j = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
     const cfg = { ...JSON.parse(JSON.stringify(DEFAULT_CONFIG)), ...j };
     if (!Array.isArray(cfg.floors) || !cfg.floors.length) cfg.floors = DEFAULT_CONFIG.floors;
+    // 성별/라벨은 항상 코드 기준으로 강제 (저장된 옛 설정이 덮어쓰지 못하게)
+    for (const f of cfg.floors) {
+      const base = DEFAULT_CONFIG.floors.find((d) => d.id === f.id);
+      if (base) { f.gender = base.gender; f.label = base.label; }
+    }
     return cfg;
   } catch {
     return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
@@ -299,7 +304,7 @@ function judgeFloor(floor, statusRows) {
     lastMotion: null, online: null,
     mapped: { presence: !!floor.presenceDeviceId, door: !!floor.doorDeviceId },
   };
-  const thresholdMs = Math.max(30, Number(config.occupiedThresholdSec || 180)) * 1000;
+  const thresholdMs = Math.max(30, Number(config.occupiedThresholdSec || 90)) * 1000;
 
   const rowOf = (id) => statusRows.find((r) => r['endpoint id'] === id);
 
@@ -444,7 +449,7 @@ function writeLog() {
   } catch { /* ignore */ }
 }
 
-setInterval(pollOnce, Math.max(3000, config.pollIntervalMs || 5000));
+setInterval(pollOnce, Math.max(2000, config.pollIntervalMs || 3000));
 pollOnce();
 
 // ---------------------------------------------------------------------------

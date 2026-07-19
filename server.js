@@ -47,7 +47,7 @@ const DEFAULT_CONFIG = {
     { id: '2F', label: '2층',      gender: 'male',   presenceDeviceId: '', doorDeviceId: '' },
     { id: '3F', label: '3층',      gender: 'female', presenceDeviceId: '', doorDeviceId: '' },
     { id: '4F', label: '4층',      gender: 'male',   presenceDeviceId: '', doorDeviceId: '' },
-    { id: '5F', label: '5층',      gender: 'female', presenceDeviceId: '', doorDeviceId: '' },
+    { id: '5F', label: '5층',      gender: 'unisex', presenceDeviceId: '', doorDeviceId: '' },
   ],
 };
 

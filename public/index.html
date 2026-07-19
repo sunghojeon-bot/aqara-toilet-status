@@ -372,14 +372,14 @@ function render(data) {
   if (unisexCards.length) {
     const h = document.createElement('div');
     h.className = 'gcol-head unisex';
-    h.innerHTML = `<span class="big-icon">🚻</span>ALL · 공용<span class="floors-note">1층</span>`;
+    h.innerHTML = `<span class="big-icon">🚻</span>ALL · 공용<span class="floors-note">1층 · 5층</span>`;
     colRight.appendChild(h);
     unisexCards.forEach(c => colRight.appendChild(c));
   }
   if (femaleCards.length) {
     const h = document.createElement('div');
     h.className = 'gcol-head female';
-    h.innerHTML = `<span class="big-icon">🚺</span>WOMEN · 여자<span class="floors-note">3층 · 5층</span>`;
+    h.innerHTML = `<span class="big-icon">🚺</span>WOMEN · 여자<span class="floors-note">3층</span>`;
     colRight.appendChild(h);
     femaleCards.forEach(c => colRight.appendChild(c));
   }

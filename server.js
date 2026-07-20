@@ -42,7 +42,7 @@ const DEFAULT_CONFIG = {
   tzOffsetHours: 9,               // Aqara 응답 시각의 타임존 (KST)
   autoMap: true,                  // 이름에 "화장실" 포함 센서 자동 매핑
   floors: [
-    { id: 'B1', label: '지하 1층', gender: 'male',   presenceDeviceId: '', doorDeviceId: '' },
+    { id: 'B1', label: '지하 1층', gender: 'female', presenceDeviceId: '', doorDeviceId: '' },
     { id: '1F', label: '1층',      gender: 'unisex', presenceDeviceId: '', doorDeviceId: '' },
     { id: '2F', label: '2층',      gender: 'male',   presenceDeviceId: '', doorDeviceId: '' },
     { id: '3F', label: '3층',      gender: 'female', presenceDeviceId: '', doorDeviceId: '' },

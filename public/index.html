@@ -261,8 +261,8 @@
   <div class="grid" id="grid"></div>
 
   <footer>
-    남자 화장실 <b>지하 1층 · 2층 · 4층</b><span class="sep">|</span>여자 화장실 <b>1층 · 3층 · 5층</b><br>
-    Aqara Hub ×6 · 재실센서 ×6 · 열림감지센서 ×6 <span class="sep">·</span> 5초 간격 자동 갱신
+    남자 화장실 <b>2층 · 4층</b><span class="sep">|</span>공용 화장실 <b>1층 · 5층</b><span class="sep">|</span>여자 화장실 <b>지하 1층 · 3층</b><br>
+    Aqara Hub ×6 · 재실센서 ×6 · 열림감지센서 ×6 <span class="sep">·</span> 실시간 자동 갱신
   </footer>
 </main>
 
@@ -331,7 +331,7 @@ function render(data) {
   grid.innerHTML = '';
   const colMale = document.createElement('div');
   colMale.className = 'gcol';
-  colMale.innerHTML = `<div class="gcol-head male"><span class="big-icon">🚹</span>MEN · 남자<span class="floors-note">지하 1층 · 2층 · 4층</span></div>`;
+  colMale.innerHTML = `<div class="gcol-head male"><span class="big-icon">🚹</span>MEN · 남자<span class="floors-note">2층 · 4층</span></div>`;
   const colRight = document.createElement('div');
   colRight.className = 'gcol';
   const unisexCards = [], femaleCards = [];
@@ -379,7 +379,7 @@ function render(data) {
   if (femaleCards.length) {
     const h = document.createElement('div');
     h.className = 'gcol-head female';
-    h.innerHTML = `<span class="big-icon">🚺</span>WOMEN · 여자<span class="floors-note">3층</span>`;
+    h.innerHTML = `<span class="big-icon">🚺</span>WOMEN · 여자<span class="floors-note">지하 1층 · 3층</span>`;
     colRight.appendChild(h);
     femaleCards.forEach(c => colRight.appendChild(c));
   }

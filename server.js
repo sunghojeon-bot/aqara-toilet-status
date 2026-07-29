@@ -577,6 +577,26 @@ const server = http.createServer(async (req, res) => {
       const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
       return send(res, 200, html, 'text/html');
     }
+    if (url.pathname === '/door') {
+      const html = fs.readFileSync(path.join(__dirname, 'public', 'door.html'), 'utf8');
+      return send(res, 200, html, 'text/html');
+    }
+    // 1층 출입문 개폐 장면 실행 (비밀번호 보호)
+    if (url.pathname === '/api/door/open' && req.method === 'POST') {
+      const DOOR_PIN = (process.env.DOOR_PIN || '').trim();
+      if (!DOOR_PIN) return send(res, 500, { ok: false, error: '서버에 DOOR_PIN 환경변수가 설정되지 않았습니다.' });
+      const body = JSON.parse(await readBody(req) || '{}');
+      if (String(body.pin || '') !== DOOR_PIN) return send(res, 403, { ok: false, error: '비밀번호가 올바르지 않습니다.' });
+      if (DEMO_MODE) return send(res, 200, { ok: true, demo: true });
+      const sceneName = config.doorSceneName || '1층 출입문 개폐';
+      const list = await mcpCallTool('scene_base_inquiry', {});
+      const rows = tableToObjects(list && list.outputs);
+      const scene = rows.find((r) => String(r['scene name'] || '').trim() === sceneName);
+      if (!scene) return send(res, 404, { ok: false, error: `"${sceneName}" 장면을 찾을 수 없습니다.` });
+      const run = await mcpCallTool('scene_run', { scene_ids: [scene['scene id']] });
+      writeLog();
+      return send(res, 200, { ok: true, result: (run && run.message) || 'executed' });
+    }
     if (url.pathname === '/api/status') return send(res, 200, cache);
     if (url.pathname === '/api/config' && req.method === 'GET') {
       const c = loadConfig();

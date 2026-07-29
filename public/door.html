@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1층 출입문 개폐 · AQARA LIFE</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root {
+    --bg: #0b0f14; --card: rgba(255,255,255,.045); --line: rgba(255,255,255,.09);
+    --ink: #eef2f7; --ink-2: #aab4c3; --ink-3: #5d6a7c;
+    --teal: #35c4b5; --good: #37d67a; --busy: #ff5d5d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Pretendard Variable', Pretendard, -apple-system, sans-serif;
+    background: radial-gradient(1200px 700px at 70% -10%, rgba(53,196,181,.09), transparent 60%), var(--bg);
+    color: var(--ink); min-height: 100vh;
+    display: grid; place-items: center; padding: 24px;
+  }
+  .wrap { width: 100%; max-width: 420px; text-align: center; }
+  .brand { font-size: .78rem; font-weight: 700; letter-spacing: .3em; color: var(--teal); margin-bottom: 10px; }
+  h1 { font-size: 1.55rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 6px; }
+  .sub { color: var(--ink-2); font-size: .9rem; margin-bottom: 34px; }
+  .panel {
+    background: var(--card); border: 1px solid var(--line); border-radius: 22px;
+    padding: 34px 28px 30px; backdrop-filter: blur(12px);
+  }
+  .doorbtn {
+    width: 170px; height: 170px; border-radius: 50%; border: 2px solid rgba(53,196,181,.5);
+    background: radial-gradient(circle at 35% 30%, rgba(53,196,181,.28), rgba(53,196,181,.08));
+    color: var(--ink); font-family: inherit; font-size: 1.15rem; font-weight: 800; letter-spacing: .02em;
+    cursor: pointer; transition: transform .15s ease, box-shadow .3s ease;
+    box-shadow: 0 0 40px rgba(53,196,181,.15);
+    display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  }
+  .doorbtn .ico { font-size: 2.3rem; line-height: 1; }
+  .doorbtn:hover { transform: scale(1.04); box-shadow: 0 0 60px rgba(53,196,181,.3); }
+  .doorbtn:active { transform: scale(.97); }
+  .doorbtn:disabled { opacity: .55; cursor: wait; transform: none; }
+  .pinrow { margin-top: 26px; display: flex; gap: 10px; justify-content: center; }
+  .pinrow input {
+    width: 150px; text-align: center; letter-spacing: .35em;
+    background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 12px;
+    color: var(--ink); font-family: inherit; font-size: 1.1rem; font-weight: 700; padding: 11px 12px; outline: none;
+  }
+  .pinrow input:focus { border-color: rgba(53,196,181,.55); }
+  .hint { margin-top: 10px; font-size: .74rem; color: var(--ink-3); }
+  .msg { margin-top: 20px; min-height: 1.4em; font-size: .95rem; font-weight: 700; }
+  .msg.ok { color: var(--good); }
+  .msg.err { color: var(--busy); }
+  .back { display: inline-block; margin-top: 30px; color: var(--ink-3); font-size: .82rem; text-decoration: none; }
+  .back:hover { color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">AQARA LIFE</div>
+  <h1>🚪 1층 출입문 개폐</h1>
+  <div class="sub">버튼을 누르면 아카라 "1층 출입문 개폐" 자동화가 실행됩니다</div>
+  <div class="panel">
+    <button class="doorbtn" id="btn" onclick="openDoor()">
+      <span class="ico">🔓</span>문 열기
+    </button>
+    <div class="pinrow">
+      <input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="비밀번호">
+    </div>
+    <div class="hint">팀 공용 비밀번호를 입력한 뒤 버튼을 눌러주세요</div>
+    <div class="msg" id="msg"></div>
+  </div>
+  <a class="back" href="/">← 화장실 재실 현황판으로</a>
+</div>
+<script>
+async function openDoor() {
+  const btn = document.getElementById('btn');
+  const msg = document.getElementById('msg');
+  const pin = document.getElementById('pin').value.trim();
+  if (!pin) { msg.className = 'msg err'; msg.textContent = '비밀번호를 입력해주세요.'; return; }
+  btn.disabled = true;
+  msg.className = 'msg'; msg.textContent = '실행 중...';
+  try {
+    const r = await fetch('/api/door/open', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    const j = await r.json();
+    if (j.ok) { msg.className = 'msg ok'; msg.textContent = '✅ 출입문 개폐 실행 완료!'; }
+    else { msg.className = 'msg err'; msg.textContent = '⚠️ ' + (j.error || '실행 실패'); }
+  } catch (e) {
+    msg.className = 'msg err'; msg.textContent = '⚠️ 서버 연결 실패';
+  }
+  setTimeout(() => { btn.disabled = false; }, 2500);
+}
+document.getElementById('pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') openDoor(); });
+</script>
+</body>
+</html>

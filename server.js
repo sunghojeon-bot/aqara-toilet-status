@@ -588,7 +588,10 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req) || '{}');
       if (String(body.pin || '') !== DOOR_PIN) return send(res, 403, { ok: false, error: '비밀번호가 올바르지 않습니다.' });
       if (DEMO_MODE) return send(res, 200, { ok: true, demo: true });
-      const sceneName = config.doorSceneName || '1층 출입문 개폐';
+      const action = String(body.action || 'open');
+      const sceneName = action === 'close'
+        ? (config.doorCloseSceneName || '1층 출입문 닫기')
+        : (config.doorSceneName || '1층 출입문 개폐');
       const list = await mcpCallTool('scene_base_inquiry', {});
       const rows = tableToObjects(list && list.outputs);
       const scene = rows.find((r) => String(r['scene name'] || '').trim() === sceneName);

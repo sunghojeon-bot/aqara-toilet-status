@@ -26,8 +26,9 @@
     background: var(--card); border: 1px solid var(--line); border-radius: 22px;
     padding: 34px 28px 30px; backdrop-filter: blur(12px);
   }
+  .btnrow { display: flex; gap: 22px; justify-content: center; }
   .doorbtn {
-    width: 170px; height: 170px; border-radius: 50%; border: 2px solid rgba(53,196,181,.5);
+    width: 150px; height: 150px; border-radius: 50%; border: 2px solid rgba(53,196,181,.5);
     background: radial-gradient(circle at 35% 30%, rgba(53,196,181,.28), rgba(53,196,181,.08));
     color: var(--ink); font-family: inherit; font-size: 1.15rem; font-weight: 800; letter-spacing: .02em;
     cursor: pointer; transition: transform .15s ease, box-shadow .3s ease;
@@ -38,6 +39,12 @@
   .doorbtn:hover { transform: scale(1.04); box-shadow: 0 0 60px rgba(53,196,181,.3); }
   .doorbtn:active { transform: scale(.97); }
   .doorbtn:disabled { opacity: .55; cursor: wait; transform: none; }
+  .doorbtn.close {
+    border-color: rgba(255,93,93,.5);
+    background: radial-gradient(circle at 35% 30%, rgba(255,93,93,.26), rgba(255,93,93,.07));
+    box-shadow: 0 0 40px rgba(255,93,93,.13);
+  }
+  .doorbtn.close:hover { box-shadow: 0 0 60px rgba(255,93,93,.28); }
   .pinrow { margin-top: 26px; display: flex; gap: 10px; justify-content: center; }
   .pinrow input {
     width: 150px; text-align: center; letter-spacing: .35em;
@@ -57,11 +64,16 @@
 <div class="wrap">
   <div class="brand">AQARA LIFE</div>
   <h1>🚪 1층 출입문 개폐</h1>
-  <div class="sub">버튼을 누르면 아카라 "1층 출입문 개폐" 자동화가 실행됩니다</div>
+  <div class="sub">아카라 "1층 출입문 개폐 / 닫기" 자동화를 원격 실행합니다</div>
   <div class="panel">
-    <button class="doorbtn" id="btn" onclick="openDoor()">
-      <span class="ico">🔓</span>문 열기
-    </button>
+    <div class="btnrow">
+      <button class="doorbtn" id="btnOpen" onclick="runDoor('open')">
+        <span class="ico">🔓</span>문 열기
+      </button>
+      <button class="doorbtn close" id="btnClose" onclick="runDoor('close')">
+        <span class="ico">🔒</span>문 닫기
+      </button>
+    </div>
     <div class="pinrow">
       <input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="비밀번호">
     </div>
@@ -71,27 +83,27 @@
   <a class="back" href="/">← 화장실 재실 현황판으로</a>
 </div>
 <script>
-async function openDoor() {
-  const btn = document.getElementById('btn');
+async function runDoor(action) {
+  const btns = [document.getElementById('btnOpen'), document.getElementById('btnClose')];
   const msg = document.getElementById('msg');
   const pin = document.getElementById('pin').value.trim();
   if (!pin) { msg.className = 'msg err'; msg.textContent = '비밀번호를 입력해주세요.'; return; }
-  btn.disabled = true;
+  btns.forEach(b => b.disabled = true);
   msg.className = 'msg'; msg.textContent = '실행 중...';
   try {
     const r = await fetch('/api/door/open', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin }),
+      body: JSON.stringify({ pin, action }),
     });
     const j = await r.json();
-    if (j.ok) { msg.className = 'msg ok'; msg.textContent = '✅ 출입문 개폐 실행 완료!'; }
+    if (j.ok) { msg.className = 'msg ok'; msg.textContent = action === 'close' ? '✅ 문 닫기 실행 완료!' : '✅ 문 열기 실행 완료!'; }
     else { msg.className = 'msg err'; msg.textContent = '⚠️ ' + (j.error || '실행 실패'); }
   } catch (e) {
     msg.className = 'msg err'; msg.textContent = '⚠️ 서버 연결 실패';
   }
-  setTimeout(() => { btn.disabled = false; }, 2500);
+  setTimeout(() => { btns.forEach(b => b.disabled = false); }, 2500);
 }
-document.getElementById('pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') openDoor(); });
+document.getElementById('pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') runDoor('open'); });
 </script>
 </body>
 </html>

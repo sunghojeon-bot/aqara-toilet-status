@@ -462,7 +462,7 @@ function sheetQueue(dateKey, person) {
   sheetFlushLater();
 }
 function sheetQueueUnmatched(dateKey, u) { if (!SHEET_URL) return; sheetPending.unmatched.push({ date: dateKey, lock: u.lock, time: u.time }); sheetFlushLater(); }
-function sheetFlushLater() { clearTimeout(sheetTimer); sheetTimer = setTimeout(sheetFlush, 4000); }
+function sheetFlushLater() { clearTimeout(sheetTimer); sheetTimer = setTimeout(sheetFlush, 1500); }
 async function sheetFlush() {
   if (!SHEET_URL) return;
   const rows = [...sheetPending.rows.values()], unmatched = sheetPending.unmatched;
@@ -473,10 +473,12 @@ async function sheetFlush() {
     for (const r of rows) sheetPending.rows.set(r.date + '|' + r.name, r); sheetPending.unmatched.push(...unmatched); sheetFlushLater(); }
 }
 /** 시트 → 서버 복원/동기화 */
-async function sheetLoad() {
-  if (!SHEET_URL) return false;
+let sheetLoadBusy = false;
+async function sheetLoad(full) {
+  if (!SHEET_URL || sheetLoadBusy) return false;
+  sheetLoadBusy = true;
   try {
-    const j = await sheetCall({ action: 'load' });
+    const j = await sheetCall({ action: 'load', light: !full });   // light: 캘린더는 Apps Script 캐시(5분) 사용 → 빠른 응답
     for (const row of (j.rows || [])) {
       const date = String(row.date || '').slice(0, 10), name = attNormalizeName(row.name);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !name) continue;
@@ -523,6 +525,7 @@ async function sheetLoad() {
     sheetLastOk = new Date().toISOString(); sheetLastErr = null;
     return true;
   } catch (e) { sheetLastErr = e.message; writeLogLine('sheet load failed: ' + e.message); return false; }
+  finally { sheetLoadBusy = false; }
 }
 
 // ---- 저장/복원 (로컬 파일 + 선택적 GitHub 백업) ----
@@ -667,11 +670,12 @@ async function fetchAttendance(hoursBack, withLocks) {
 if (ATTEND_ON) {
   attLoadLocal();
   setTimeout(async () => {
-    await attLoadGitHub(); await sheetLoad();
+    await attLoadGitHub(); await sheetLoad(true);
     for (let i = 0; i < 6 && !attLastAt; i++) { await fetchAttendance(7 * 24, true); if (!attLastAt) await new Promise((r) => setTimeout(r, 20000)); }   // 부팅: 시트 복원 + 7일 백필 (MCP 초기 실패 시 20초 간격 재시도)
   }, 8000);
-  setInterval(() => { sheetLoad(); }, 5 * 60 * 1000);                                             // 5분: 시트 수동수정 반영
-  setInterval(() => fetchAttendance(3, true), 20 * 1000);                                         // 20초: 최근 3시간
+  setInterval(() => { sheetLoad(false); }, 30 * 1000);                                           // 30초: 시트 수동수정·처리 체크·명단 반영 (캘린더는 캐시)
+  setInterval(() => { sheetLoad(true); }, 5 * 60 * 1000);                                         // 5분: 캘린더 휴가 새로 읽기
+  setInterval(() => fetchAttendance(3, true), 15 * 1000);                                         // 15초: 최근 3시간
   setInterval(() => fetchAttendance(25, true), 5 * 60 * 1000);                                    // 5분: 최근 25시간
 }
 

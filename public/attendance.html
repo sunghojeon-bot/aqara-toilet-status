@@ -278,6 +278,8 @@ function render() {
 }
 function buildReview(days) {
   const items = [];
+  const mf = DATA.multiFire || []; const seenDay = new Set();
+  for (const f of mf) { const key = f.date + f.type; if (seenDay.has(key)) continue; seenDay.add(key); const same = mf.filter((x) => x.date === f.date && x.type === f.type); const names = [...new Set(same.flatMap((x) => x.people))]; items.push({ d: f.date, k: '자동화 조건 확인', t: `${same.map((x) => x.time).sort().join(', ')}에 ${f.type} 자동화 ${names.length}개(${names.join(', ')})가 동시에 실행됨 — 지문 한 번에 여러 사람이 잡히는 상태. 아카라 앱에서 각 자동화의 조건을 "특정 사용자(본인)로 잠금 해제"로 지정해야 합니다` }); }
   for (const u of ((DATA.automations || {}).unknown || [])) items.push({ d: '설정', k: '자동화 이름 확인', t: `아카라 자동화 "${u.automations.join('", "')}" 의 이름 "${u.person}" 이(가) 재직자 명단에 없음${u.suggest ? ` — "${u.suggest}" 의 오타?` : ''} (명단과 똑같이 고쳐야 집계됨)` });
   for (const day of days) {
     for (const u of (day.unmatched || [])) items.push({ d: day.date, k: '미등록 인식', done: !!u.done, t: `${u.lock} ${u.time} — 자동화와 매칭되지 않은 잠금해제 (미등록 지문 / 앱 개방 등)${u.memo ? ' · 메모: ' + u.memo : ''}` });

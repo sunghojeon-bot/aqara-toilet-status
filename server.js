@@ -75,6 +75,11 @@ const PORT = Number(process.env.PORT || 3000);
 const MCP_URL = process.env.AQARA_MCP_URL || config.mcpUrl;
 const API_KEY = (process.env.AQARA_API_KEY || config.apiKey || '').trim();
 const DEMO_MODE = !API_KEY;
+// 서비스 분리: SERVICE=toilet (화장실 현황판만) / SERVICE=attendance (출퇴근만, '/'가 출퇴근 페이지) / 미설정 = 둘 다
+const SERVICE = (process.env.SERVICE || 'all').trim().toLowerCase();
+const TOILET_ON = SERVICE !== 'attendance';
+const ATTEND_ON = SERVICE !== 'toilet';
+const ATTENDANCE_URL = (process.env.ATTENDANCE_URL || '').trim().replace(/\/$/, '');   // toilet 모드에서 /attendance 접속 시 이동할 새 주소
 
 // ---------------------------------------------------------------------------
 // MCP 클라이언트 (Streamable HTTP, JSON-RPC 2.0)
@@ -610,11 +615,13 @@ async function fetchAttendance(hoursBack, withLocks) {
     if (changed) attSave();
   } catch (e) { writeLogLine('attendance fetch failed: ' + e.message); } finally { attBusy = false; }
 }
-attLoadLocal();
-setTimeout(async () => { await attLoadGitHub(); await sheetLoad(); await fetchAttendance(7 * 24, true); }, 8000);   // 부팅: 시트 복원 + 7일 백필
-setInterval(() => { sheetLoad(); }, 5 * 60 * 1000);                                             // 5분: 시트 수동수정 반영
-setInterval(() => fetchAttendance(3, true), 20 * 1000);                                         // 20초: 최근 3시간
-setInterval(() => fetchAttendance(25, true), 5 * 60 * 1000);                                    // 5분: 최근 25시간
+if (ATTEND_ON) {
+  attLoadLocal();
+  setTimeout(async () => { await attLoadGitHub(); await sheetLoad(); await fetchAttendance(7 * 24, true); }, 8000);   // 부팅: 시트 복원 + 7일 백필
+  setInterval(() => { sheetLoad(); }, 5 * 60 * 1000);                                             // 5분: 시트 수동수정 반영
+  setInterval(() => fetchAttendance(3, true), 20 * 1000);                                         // 20초: 최근 3시간
+  setInterval(() => fetchAttendance(25, true), 5 * 60 * 1000);                                    // 5분: 최근 25시간
+}
 
 /** API 응답용 가공: 상태 판정 + 확인 필요 항목 */
 function attBuildReport(days) {
@@ -856,12 +863,14 @@ function writeLog() {
 }
 
 let pollBusy = false;
-setInterval(async () => {
-  if (pollBusy) return; // 이전 폴링이 끝나기 전 중복 실행 방지
-  pollBusy = true;
-  try { await pollOnce(); } finally { pollBusy = false; }
-}, Math.max(2000, config.pollIntervalMs || 3000));
-pollOnce();
+if (TOILET_ON) {
+  setInterval(async () => {
+    if (pollBusy) return; // 이전 폴링이 끝나기 전 중복 실행 방지
+    pollBusy = true;
+    try { await pollOnce(); } finally { pollBusy = false; }
+  }, Math.max(2000, config.pollIntervalMs || 3000));
+  pollOnce();
+}
 
 // ---------------------------------------------------------------------------
 // HTTP 서버
@@ -885,8 +894,13 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   try {
     if (url.pathname === '/' || url.pathname === '/index.html') {
-      const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+      const html = fs.readFileSync(path.join(__dirname, 'public', TOILET_ON ? 'index.html' : 'attendance.html'), 'utf8');
       return send(res, 200, html, 'text/html');
+    }
+    if (url.pathname === '/health') return send(res, 200, { ok: true, service: SERVICE, time: new Date().toISOString() });
+    if (!ATTEND_ON && (url.pathname === '/attendance' || url.pathname.startsWith('/api/attendance'))) {
+      if (ATTENDANCE_URL && url.pathname === '/attendance') { res.writeHead(302, { Location: ATTENDANCE_URL + '/' }); return res.end(); }
+      return send(res, 404, { error: 'attendance service moved', url: ATTENDANCE_URL || null });
     }
     if (url.pathname === '/door') {
       const html = fs.readFileSync(path.join(__dirname, 'public', 'door.html'), 'utf8');

@@ -97,7 +97,7 @@
   <div class="head">
     <div>
       <h1>🕐 출퇴근 기록</h1>
-      <div class="sub">출근·퇴근 체크 도어락 지문 인식 기준 · <span class="live">20초 간격 실시간 수집</span></div>
+      <div class="sub">출근·퇴근 체크 도어락 지문 인식 기준 · <span class="live">15초 간격 실시간 수집</span></div>
     </div>
     <div class="clock"><div class="t" id="clock">--:--:--</div><div class="d" id="date"></div></div>
   </div>
@@ -312,7 +312,7 @@ async function load() {
     render();
   } catch (e) { $('upd').textContent = '서버 연결 실패 — 잠시 후 다시 시도합니다'; }
 }
-load(); setInterval(load, 10000);
+load(); setInterval(load, 5000);
 </script>
 </body>
 </html>

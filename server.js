@@ -620,7 +620,10 @@ async function fetchAttendance(hoursBack, withLocks) {
 }
 if (ATTEND_ON) {
   attLoadLocal();
-  setTimeout(async () => { await attLoadGitHub(); await sheetLoad(); await fetchAttendance(7 * 24, true); }, 8000);   // 부팅: 시트 복원 + 7일 백필
+  setTimeout(async () => {
+    await attLoadGitHub(); await sheetLoad();
+    for (let i = 0; i < 6 && !attLastAt; i++) { await fetchAttendance(7 * 24, true); if (!attLastAt) await new Promise((r) => setTimeout(r, 20000)); }   // 부팅: 시트 복원 + 7일 백필 (MCP 초기 실패 시 20초 간격 재시도)
+  }, 8000);
   setInterval(() => { sheetLoad(); }, 5 * 60 * 1000);                                             // 5분: 시트 수동수정 반영
   setInterval(() => fetchAttendance(3, true), 20 * 1000);                                         // 20초: 최근 3시간
   setInterval(() => fetchAttendance(25, true), 5 * 60 * 1000);                                    // 5분: 최근 25시간

@@ -81,6 +81,7 @@
   .review .item { display: grid; grid-template-columns: 100px 100px 1fr; gap: 12px; align-items: baseline; padding: 9px 14px; font-size: .9rem; border-top: 1px solid rgba(255,255,255,.05); }
   .review .d { color: var(--ink-3); font-variant-numeric: tabular-nums; }
   .review .k { color: var(--gold); font-weight: 700; }
+  .review .item.done { opacity: .5; } .review .item.done > span:last-child { text-decoration: line-through; }
   .note { margin-top: 22px; font-size: .76rem; color: var(--ink-3); line-height: 1.7; }
   .upd { font-size: .74rem; color: var(--ink-3); margin-top: 8px; }
   .back { display: inline-block; margin-top: 22px; color: var(--ink-3); font-size: .82rem; text-decoration: none; }
@@ -144,7 +145,7 @@ function tickClock() {
 }
 tickClock(); setInterval(tickClock, 1000);
 
-let DATA = null, tab = 'today', filter = 'all', q = '';
+let DATA = null, tab = 'today', filter = 'all', q = '', showDone = false;
 const STATUS = { ok: ['퇴근 완료', 'b-ok'], working: ['근무 중', 'b-work'], missing_out: ['퇴근 누락', 'b-warn'], missing_in: ['출근 누락', 'b-bad'], absent: ['미출근', 'b-dim'], leave: ['외근·출장', 'b-leave'] };
 const badge = (st) => { const s = STATUS[st] || STATUS.ok; return `<span class="badge ${s[1]}">${s[0]}</span>`; };
 const leaveBadge = (p) => p.leave ? `<span class="badge b-leave" title="${(p.leave.note || '').replace(/"/g, '&quot;')}">${p.leave.type}</span>` : '';
@@ -198,7 +199,9 @@ function render() {
   const known = knownPeople(days);
   const todayRows = rowsForDay(today, days);
   const c = (st) => todayRows.filter((p) => p.status === st).length;
-  const reviewItems = buildReview(days);
+  const allReview = buildReview(days);
+  const reviewItems = allReview.filter((i) => !i.done);
+  const doneItems = allReview.filter((i) => i.done);
   const statDefs = [
     ['all', today.people.filter((p) => p.in || p.out).length, '오늘 출근', 'c-good'], ['working', c('working'), '근무 중', 'c-blue'], ['ok', c('ok'), '퇴근 완료', 'c-dim'],
     ['leave', todayRows.filter((p) => p.leave).length, '외근·출장', 'c-leave'], ['absent', c('absent'), '미출근', 'c-gold'], ['issue', reviewItems.length, '확인 필요', 'c-busy'],
@@ -242,10 +245,12 @@ function render() {
     sum.innerHTML = name ? `<span><b>${name}</b></span><span>근무일 <b>${rows.length}</b>일</span><span>총 근무 <b>${fmtMin(tot) || '0분'}</b></span><span>평균 출근 <b>${avg != null ? String(Math.floor(avg / 60)).padStart(2, '0') + ':' + String(avg % 60).padStart(2, '0') : '-'}</b></span><span>누락 <b>${rows.filter((r) => r.p.status.startsWith('missing')).length}</b>건</span>` : '';
     wrap.innerHTML = rows.length ? table(['날짜', '이름', '출근', '퇴근', '근무시간', '상태'], rows.map(({ date, p }) => personRow(p, date)).join('')) : '<div class="empty">직원을 선택하세요.</div>';
   } else {
-    currentRows = reviewItems.map((i) => [i.d, i.k, i.t, '', '', '']);
-    sum.innerHTML = `<span>최근 31일 확인 필요 <b>${reviewItems.length}</b>건</span>`;
-    wrap.innerHTML = reviewItems.length
-      ? `<div class="review">${reviewItems.map((i) => `<div class="item"><span class="d">${i.d}</span><span class="k">${i.k}</span><span>${i.t}</span></div>`).join('')}</div>`
+    const shown = showDone ? allReview : reviewItems;
+    currentRows = shown.map((i) => [i.d, i.k, i.t, i.done ? '처리됨' : '', '', '']);
+    sum.innerHTML = `<span>최근 31일 확인 필요 <b>${reviewItems.length}</b>건</span><span>처리됨 <b>${doneItems.length}</b>건</span><label style="cursor:pointer"><input type="checkbox" id="showDone" ${showDone ? 'checked' : ''}> 처리된 항목 보기</label><span class="small">시트 "확인필요" 탭의 처리 체크 = 확인 처리</span>`;
+    $('showDone').onchange = (e) => { showDone = e.target.checked; render(); };
+    wrap.innerHTML = shown.length
+      ? `<div class="review">${shown.map((i) => `<div class="item ${i.done ? 'done' : ''}"><span class="d">${i.d}</span><span class="k">${i.done ? '<span class="badge b-ok">처리됨</span>' : i.k}</span><span>${i.t}</span></div>`).join('')}</div>`
       : '<div class="empty">확인이 필요한 항목이 없습니다.</div>';
   }
   const col = DATA.collectedAt ? new Date(DATA.collectedAt).toLocaleTimeString('ko-KR', { hour12: false }) : '-';
@@ -255,7 +260,7 @@ function render() {
 function buildReview(days) {
   const items = [];
   for (const day of days) {
-    for (const u of (day.unmatched || [])) items.push({ d: day.date, k: '미등록 인식', t: `${u.lock} ${u.time} — 자동화와 매칭되지 않은 잠금해제 (미등록 지문 / 앱 개방 등)` });
+    for (const u of (day.unmatched || [])) items.push({ d: day.date, k: '미등록 인식', done: !!u.done, t: `${u.lock} ${u.time} — 자동화와 매칭되지 않은 잠금해제 (미등록 지문 / 앱 개방 등)${u.memo ? ' · 메모: ' + u.memo : ''}` });
     for (const p of day.people) {
       if (p.status === 'missing_out') items.push({ d: day.date, k: '퇴근 누락', t: `${p.name} — 출근 ${p.in}, 퇴근 기록 없음` });
       if (p.status === 'missing_in') items.push({ d: day.date, k: '출근 누락', t: `${p.name} — 퇴근 ${outText(p)}, 출근 기록 없음` });
@@ -271,7 +276,7 @@ $('q').oninput = (e) => { q = e.target.value.trim(); render(); };
 $('dayPick').onchange = render;
 $('personPick').onchange = render;
 $('csv').onclick = () => {
-  const head = tab === 'review' ? ['날짜', '구분', '내용'] : ['날짜', '이름', '출근', '퇴근', '근무시간', '상태'];
+  const head = tab === 'review' ? ['날짜', '구분', '내용', '처리'] : ['날짜', '이름', '출근', '퇴근', '근무시간', '상태'];
   const lines = [head, ...currentRows.map((r) => r.slice(0, head.length))].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);

@@ -150,6 +150,14 @@ tickClock(); setInterval(tickClock, 1000);
 
 let DATA = null, tab = 'today', filter = 'all', q = '', showDone = false;
 const STATUS = { ok: ['퇴근 완료', 'b-ok'], working: ['근무 중', 'b-work'], missing_out: ['퇴근 누락', 'b-warn'], missing_in: ['출근 누락', 'b-bad'], absent: ['미출근', 'b-dim'], pre: ['출근 전', 'b-dim'], leave: ['외근·출장', 'b-leave'] };
+const autoBadge = (p) => {
+  if (!DATA.automations || p.onRoster === false) return '';
+  if (p.autoIn === undefined) return '';
+  if (!p.autoIn && !p.autoOut) return '<span class="badge b-warn" style="margin-left:4px" title="아카라 앱에 \'출근 이름\' / \'퇴근 이름\' 자동화가 없음">자동화 미설정</span>';
+  if (!p.autoIn) return '<span class="badge b-warn" style="margin-left:4px">출근 자동화 없음</span>';
+  if (!p.autoOut) return '<span class="badge b-warn" style="margin-left:4px">퇴근 자동화 없음</span>';
+  return '';
+};
 const fpBadge = (p) => p.fp === false ? '<span class="badge b-dim" style="margin-left:4px;opacity:.7" title="재직자 명단의 지문 등록 여부가 비어 있음">지문 미등록</span>' : (p.onRoster === false && (p.in || p.out) ? '<span class="badge b-dim" style="margin-left:4px;opacity:.7" title="재직자 명단에 없는 이름">명단 외</span>' : '');
 const badge = (st) => { const s = STATUS[st] || STATUS.ok; return `<span class="badge ${s[1]}">${s[0]}</span>`; };
 const isVacation = (p) => !!p.leave && /연차|반차|휴가|월차|휴무|병가|경조/.test(p.leave.type);
@@ -175,7 +183,7 @@ const nowHHMM = () => { const n = new Date(); return String(n.getHours()).padSta
 function rowsForDay(day, days) {
   const rows = [...day.people];
   const pre = day === days[0] && nowHHMM() < ABSENT_AFTER;
-  for (const a of (day.absent || [])) rows.push({ name: a.name, fp: a.fp, onRoster: true, in: null, out: null, status: pre ? 'pre' : 'absent' });
+  for (const a of (day.absent || [])) rows.push({ name: a.name, fp: a.fp, autoIn: a.autoIn, autoOut: a.autoOut, onRoster: true, in: null, out: null, status: pre ? 'pre' : 'absent' });
   return rows;
 }
 const rosterActive = () => (DATA && DATA.roster ? DATA.roster.filter((p) => p.active) : []);
@@ -198,7 +206,7 @@ function personRow(p, dateCol) {
   return `<tr>${dateCol ? `<td class="date">${dateCol}</td>` : ''}<td class="name">${p.name}</td>
     <td class="num ${p.in ? 't-in' : 't-none'}">${p.in || (p.leave && p.leave.start ? `<span class="t-plan">${p.leave.start}</span><span class="small">예정</span>` : '-')}${p.inCount > 1 ? `<span class="small">${p.inCount}회</span>` : ''}</td>
     <td class="num ${p.out ? 't-out' : 't-none'}">${p.out ? outText(p) : (p.leave && p.leave.end ? `<span class="t-plan">${p.leave.end}</span><span class="small">예정</span>` : outText(p))}${p.outCount > 1 ? `<span class="small">${p.outCount}회</span>` : ''}</td>
-    <td class="num ${d ? 't-dur' : 't-none'}">${d || '-'}</td><td>${p.status === 'leave' ? leaveBadge(p) : badge(p.status) + (p.leave ? ' ' + leaveBadge(p) : '')}${p.manual ? '<span class="badge b-dim" style="margin-left:4px">시트 수정</span>' : ''}${fpBadge(p)}</td></tr>`;
+    <td class="num ${d ? 't-dur' : 't-none'}">${d || '-'}</td><td>${p.status === 'leave' ? leaveBadge(p) : badge(p.status) + (p.leave ? ' ' + leaveBadge(p) : '')}${p.manual ? '<span class="badge b-dim" style="margin-left:4px">시트 수정</span>' : ''}${fpBadge(p)}${autoBadge(p)}</td></tr>`;
 }
 
 let currentRows = [];   // CSV 용
@@ -229,7 +237,7 @@ function render() {
   if (tab === 'today') {
     const rows = applyFilter(todayRows).sort((a, b) => (a.in || '99').localeCompare(b.in || '99') || a.name.localeCompare(b.name, 'ko'));
     currentRows = rows.map((p) => [today.date, p.name, p.in || '', outText(p), durText(p) || '', statusText(p)]);
-    sum.innerHTML = `<span>${today.date}${today.weekend ? ' <span class="small">(주말 · 미출근 판정 안 함)</span>' : ''}</span><span>재직자 <b>${rosterActive().length || known.length}</b>명</span><span>지문 등록 <b>${rosterActive().filter((p) => p.fp).length}</b>명</span><span>표시 <b>${rows.length}</b>명</span>`;
+    sum.innerHTML = `<span>${today.date}${today.weekend ? ' <span class="small">(주말 · 미출근 판정 안 함)</span>' : ''}</span><span>재직자 <b>${rosterActive().length || known.length}</b>명</span><span>지문 등록 <b>${rosterActive().filter((p) => p.fp).length}</b>명</span>${DATA.automations ? `<span>자동화 설정 <b>${rosterActive().filter((p) => (DATA.automations.people[p.name] || {}).in && (DATA.automations.people[p.name] || {}).out).length}</b>명</span>` : ''}<span>표시 <b>${rows.length}</b>명</span>`;
     wrap.innerHTML = rows.length ? table(['이름', '출근', '퇴근', '근무시간', '상태'], rows.map((p) => personRow(p)).join(''))
       : `<div class="empty">${known.length ? '조건에 맞는 직원이 없습니다.' : '아직 기록이 없습니다. 도어락 지문 인식 후 30초~1분 내에 표시됩니다.'}</div>`;
   } else if (tab === 'byday') {
@@ -270,6 +278,7 @@ function render() {
 }
 function buildReview(days) {
   const items = [];
+  for (const u of ((DATA.automations || {}).unknown || [])) items.push({ d: '설정', k: '자동화 이름 확인', t: `아카라 자동화 "${u.automations.join('", "')}" 의 이름 "${u.person}" 이(가) 재직자 명단에 없음${u.suggest ? ` — "${u.suggest}" 의 오타?` : ''} (명단과 똑같이 고쳐야 집계됨)` });
   for (const day of days) {
     for (const u of (day.unmatched || [])) items.push({ d: day.date, k: '미등록 인식', done: !!u.done, t: `${u.lock} ${u.time} — 자동화와 매칭되지 않은 잠금해제 (미등록 지문 / 앱 개방 등)${u.memo ? ' · 메모: ' + u.memo : ''}` });
     for (const p of day.people) {

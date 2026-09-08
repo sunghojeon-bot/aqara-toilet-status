@@ -484,6 +484,21 @@ async function sheetLoad() {
       const arr = attendance.unmatched[date] || (attendance.unmatched[date] = []);
       if (!arr.some((x) => x.lock === u.lock && x.time === u.time)) arr.push({ lock: String(u.lock || ''), time: String(u.time || '') });
     }
+    // 외근·출장·휴가 (시트 '외근출장' 탭): 날짜별 기록에 leave 로 표시, 도어락 기록이 없어도 그날 행 생성
+    const sheetKeys = new Set((j.rows || []).map((r) => String(r.date || '').slice(0, 10) + '|' + attNormalizeName(r.name)));
+    const leaveKeys = new Set();
+    for (const l of (j.leaves || [])) {
+      const date = String(l.date || '').slice(0, 10), name = attNormalizeName(l.name);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !name || !l.type) continue;
+      leaveKeys.add(date + '|' + name);
+      const day = attendance.days[date] || (attendance.days[date] = {});
+      const rec = day[name] || (day[name] = { in: null, out: null, outNextDay: false, inCount: 0, outCount: 0, _seen: {} });
+      rec.leave = { type: String(l.type), start: String(l.start || '') || null, end: String(l.end || '') || null, note: String(l.note || '') };
+      if (!sheetKeys.has(date + '|' + name)) sheetQueue(date, name);   // 시트 출퇴근기록에도 행 생성 (근무일수 집계용)
+    }
+    for (const [d, people] of Object.entries(attendance.days)) for (const [p, r] of Object.entries(people)) {
+      if (r.leave && !leaveKeys.has(d + '|' + p)) delete r.leave;   // 시트에서 지워진 항목 반영
+    }
     sheetLastOk = new Date().toISOString(); sheetLastErr = null;
     return true;
   } catch (e) { sheetLastErr = e.message; writeLogLine('sheet load failed: ' + e.message); return false; }
@@ -610,7 +625,8 @@ function attBuildReport(days) {
       let status = 'ok';
       if (r.in && !r.out) status = key === todayKey ? 'working' : 'missing_out';
       else if (!r.in && r.out) status = 'missing_in';
-      return { name, in: r.in, out: r.out, outNextDay: !!r.outNextDay, inCount: r.inCount || 0, outCount: r.outCount || 0, status, manual: !!r.manual };
+      if (!r.in && !r.out) status = r.leave ? 'leave' : 'absent';
+      return { name, in: r.in, out: r.out, outNextDay: !!r.outNextDay, inCount: r.inCount || 0, outCount: r.outCount || 0, status, manual: !!r.manual, leave: r.leave || null };
     }).sort((a, b) => String(a.in || '99').localeCompare(String(b.in || '99')));
     out.push({ date: key, people, unmatched: attendance.unmatched[key] || [] });
   }

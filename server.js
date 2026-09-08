@@ -589,6 +589,42 @@ function attSave() {
 }
 function writeLogLine(msg) { try { fs.appendFileSync(path.join(__dirname, 'server.log'), `[${new Date().toISOString()}] ${msg}\n`); } catch { /* ignore */ } }
 
+// ---- 자동화 설정 점검: 아카라 앱에 '출근 이름'/'퇴근 이름' 자동화가 있는지 (재직자 명단과 대조) ----
+let autoSetup = { checkedAt: null, in: new Set(), out: new Set(), names: [] };
+async function checkAutomations() {
+  if (DEMO_MODE) return;
+  try {
+    const data = await mcpCallTool('automation_base_inquiry', {});
+    const rows = tableToObjects(data && data.outputs);
+    const next = { checkedAt: new Date().toISOString(), in: new Set(), out: new Set(), names: [] };
+    for (const r of rows) {
+      const name = String(r['automation name'] || '').trim();
+      const m = name.match(/^(출근|퇴근)[\s_\-:]*(.+)$/); if (!m) continue;
+      const person = attNormalizeName(m[2]); if (!person) continue;
+      (m[1] === '출근' ? next.in : next.out).add(person);
+      next.names.push({ name, type: m[1], person });
+    }
+    autoSetup = next;
+  } catch (e) { writeLogLine('automation check failed: ' + e.message); }
+}
+function autoSetupReport() {
+  if (!autoSetup.checkedAt) return null;
+  const rosterNames = new Set(roster.map((p) => p.name));
+  const people = {};
+  for (const p of roster) people[p.name] = { in: autoSetup.in.has(p.name), out: autoSetup.out.has(p.name) };
+  // 명단에 없는 이름으로 만들어진 자동화 (오타 의심) — 가장 비슷한 명단 이름 제안
+  const sim = (a, b) => { let c = 0; for (const ch of a) if (b.includes(ch)) c++; return c / Math.max(a.length, b.length); };
+  const unknown = [];
+  const seen = new Set();
+  for (const a of autoSetup.names) {
+    if (rosterNames.has(a.person) || seen.has(a.person)) continue; seen.add(a.person);
+    let best = null, bs = 0; for (const n of rosterNames) { const sc = sim(a.person, n); if (sc > bs) { bs = sc; best = n; } }
+    unknown.push({ person: a.person, automations: autoSetup.names.filter((x) => x.person === a.person).map((x) => x.name), suggest: bs >= 0.5 ? best : null });
+  }
+  return { checkedAt: autoSetup.checkedAt, people, unknown };
+}
+if (ATTEND_ON) { setTimeout(checkAutomations, 15000); setInterval(checkAutomations, 10 * 60 * 1000); }
+
 // ---- 수집 ----
 let lockDevices = { at: 0, list: [] };
 async function attFetchLocks() {
@@ -654,6 +690,7 @@ function attBuildReport(days) {
     const rosterMap = new Map(roster.map((p) => [p.name, p]));
     for (const p of people) { const rp = rosterMap.get(p.name); p.fp = rp ? rp.fp : null; p.onRoster = !!rp; }
     const absent = isWeekend(key) ? [] : roster.filter((p) => p.active && !present.has(p.name)).map((p) => ({ name: p.name, fp: p.fp }));
+    if (autoSetup.checkedAt) { for (const p of people) { p.autoIn = autoSetup.in.has(p.name); p.autoOut = autoSetup.out.has(p.name); } for (const a of absent) { a.autoIn = autoSetup.in.has(a.name); a.autoOut = autoSetup.out.has(a.name); } }
     out.push({ date: key, weekend: isWeekend(key), people, absent, unmatched: attendance.unmatched[key] || [] });
   }
   return out;
@@ -950,7 +987,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { updatedAt: new Date().toISOString(), collectedAt: attLastAt,
         pollSec: 20, storage: SHEET_URL ? 'sheet+local' : ((GH_TOKEN && GH_DATA_REPO) ? 'github+local' : 'local'),
         sheet: SHEET_URL ? { lastOk: sheetLastOk, lastErr: sheetLastErr } : null,
-        roster: roster.map((p) => ({ name: p.name, fp: p.fp, active: p.active })), days: attBuildReport(days) });
+        roster: roster.map((p) => ({ name: p.name, fp: p.fp, active: p.active })), automations: autoSetupReport(), days: attBuildReport(days) });
     }
     if (url.pathname === '/api/status') return send(res, 200, cache);
     if (url.pathname === '/api/config' && req.method === 'GET') {

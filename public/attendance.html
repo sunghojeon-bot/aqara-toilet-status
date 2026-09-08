@@ -180,7 +180,7 @@ function personRow(p, dateCol) {
   return `<tr>${dateCol ? `<td class="date">${dateCol}</td>` : ''}<td class="name">${p.name}</td>
     <td class="num ${p.in ? 't-in' : 't-none'}">${p.in || '-'}${p.inCount > 1 ? `<span class="small">${p.inCount}회</span>` : ''}</td>
     <td class="num ${p.out ? 't-out' : 't-none'}">${outText(p)}${p.outCount > 1 ? `<span class="small">${p.outCount}회</span>` : ''}</td>
-    <td class="num ${d ? 't-dur' : 't-none'}">${d || '-'}</td><td>${badge(p.status)}</td></tr>`;
+    <td class="num ${d ? 't-dur' : 't-none'}">${d || '-'}</td><td>${badge(p.status)}${p.manual ? '<span class="badge b-dim" style="margin-left:4px">시트 수정</span>' : ''}</td></tr>`;
 }
 
 let currentRows = [];   // CSV 용
@@ -242,7 +242,8 @@ function render() {
       : '<div class="empty">확인이 필요한 항목이 없습니다.</div>';
   }
   const col = DATA.collectedAt ? new Date(DATA.collectedAt).toLocaleTimeString('ko-KR', { hour12: false }) : '-';
-  $('upd').textContent = `마지막 수집 ${col} · 저장: ${DATA.storage === 'github+local' ? '서버 + GitHub 백업' : '서버'}`;
+  const st = DATA.storage === 'sheet+local' ? ('서버 + Google 시트' + (DATA.sheet && DATA.sheet.lastErr ? ' (⚠️ 시트 연동 오류: ' + DATA.sheet.lastErr + ')' : '')) : (DATA.storage === 'github+local' ? '서버 + GitHub 백업' : '서버');
+  $('upd').textContent = `마지막 수집 ${col} · 저장: ${st}`;
 }
 function buildReview(days) {
   const items = [];

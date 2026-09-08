@@ -384,6 +384,7 @@ function attMerge(store, type, person, t) {
 function attApplyHistory(store, list) {
   let changed = false;
   const execTimes = [];                            // 매칭용: 모든 출근/퇴근 실행 시각(ms)
+  const byMinute = {};                             // '출근@YYYY-MM-DD HH:MM' → 실행된 사람들
   for (const item of list || []) {
     const name = String(item.automation_name || '').trim();
     const m = name.match(/^(출근|퇴근)[\s_\-:]*(.+)$/);
@@ -396,10 +397,14 @@ function attApplyHistory(store, list) {
     for (const raw of times) {
       const t = attParseTime(raw); if (!t) continue;
       execTimes.push(t.ms);
+      const gk = m[1] + '@' + t.date + ' ' + t.hhmm; (byMinute[gk] || (byMinute[gk] = new Set())).add(person);
       if (attMerge(store, type, person, t)) changed = true;
     }
   }
   store._execTimes = execTimes;
+  // 같은 분에 서로 다른 사람의 같은 종류 자동화가 2개 이상 실행 → 자동화 조건에 사용자를 지정하지 않은 것 (한 사람 지문에 전원 자동화가 반응)
+  const multi = store._multi || (store._multi = {});
+  for (const [gk, set] of Object.entries(byMinute)) if (set.size >= 2) multi[gk] = [...set].sort();
   return changed;
 }
 /** 도어락 로그(list) 의 잠금해제 시각 중 자동화 실행과 ±1분 내 매칭 안 되는 것 → unmatched */
@@ -987,7 +992,9 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { updatedAt: new Date().toISOString(), collectedAt: attLastAt,
         pollSec: 20, storage: SHEET_URL ? 'sheet+local' : ((GH_TOKEN && GH_DATA_REPO) ? 'github+local' : 'local'),
         sheet: SHEET_URL ? { lastOk: sheetLastOk, lastErr: sheetLastErr } : null,
-        roster: roster.map((p) => ({ name: p.name, fp: p.fp, active: p.active })), automations: autoSetupReport(), days: attBuildReport(days) });
+        roster: roster.map((p) => ({ name: p.name, fp: p.fp, active: p.active })), automations: autoSetupReport(),
+        multiFire: Object.entries(attendance._multi || {}).map(([k, people]) => { const m = k.match(/^(출근|퇴근)@(\S+) (\S+)$/); return { type: m[1], date: m[2], time: m[3], people }; }).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)).slice(0, 30),
+        days: attBuildReport(days) });
     }
     if (url.pathname === '/api/status') return send(res, 200, cache);
     if (url.pathname === '/api/config' && req.method === 'GET') {

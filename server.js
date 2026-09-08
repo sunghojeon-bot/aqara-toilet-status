@@ -328,57 +328,223 @@ async function fetchAutoSync() {
 }
 
 // ---------------------------------------------------------------------------
-// 출퇴근 기록: "출근 <이름>" / "퇴근 <이름>" 자동화 실행 이력 수집
-//   출근/퇴근 체크 도어락의 지문 잠금해제를 조건으로 하는 자동화를 사람별로
-//   만들어두면 (예: "출근 홍길동"), 실행 이력이 곧 출퇴근 기록이 됩니다.
-//   Aqara 이력 보존이 약 7일이라 서버가 5분마다 수집해 attendance.json 에 축적.
+// 출퇴근 기록 (도어락 지문 → "출근 <이름>" / "퇴근 <이름>" 자동화 실행 이력)
+//   - 이름 정규화: 공백/특수문자 무시 → 두 도어락의 자동화 이름이 조금 달라도 같은 사람으로 연결
+//   - 중복/연속 인증: 같은 날 출근은 최초, 퇴근은 최종 시각만 사용 (재수집해도 멱등)
+//   - 자정 이후 퇴근: 05:00 이전 퇴근은 전날 근무의 퇴근으로 귀속 (익일 표시)
+//   - 미매칭 인식: 도어락 잠금해제 로그 중 어떤 출근/퇴근 자동화와도 안 맞는 건 "확인 필요"
+//   - 보존: Aqara 이력이 ~7일이라 서버가 20초마다 수집해 attendance.json 에 축적
+//          (GH_TOKEN + GH_DATA_REPO 설정 시 GitHub 저장소에도 백업/복원)
 // ---------------------------------------------------------------------------
 const ATT_PATH = path.join(__dirname, 'attendance.json');
-let attendance = {}; // { 'YYYY-MM-DD': { '이름': { in: 'HH:MM', out: 'HH:MM' } } }
-try { attendance = JSON.parse(fs.readFileSync(ATT_PATH, 'utf8')); } catch { attendance = {}; }
+const ATT_DAY_CUTOFF_HOUR = 5;   // 이 시각 이전의 퇴근은 전날 근무로 귀속
+let attendance = { days: {}, unmatched: {} };
+// days: { 'YYYY-MM-DD': { '이름': { in, out, outNextDay, inCount, outCount } } }
+// unmatched: { 'YYYY-MM-DD': [ { lock, time } ] }
 
-function attMerge(dateKey, person, type, hhmm) {
-  const day = attendance[dateKey] || (attendance[dateKey] = {});
-  const rec = day[person] || (day[person] = { in: null, out: null });
-  if (type === 'in') { if (!rec.in || hhmm < rec.in) rec.in = hhmm; }
-  else { if (!rec.out || hhmm > rec.out) rec.out = hhmm; }
+function attNormalizeName(s) {
+  return String(s || '').replace(/[\s_\-·.,:;()\[\]{}]/g, '').trim();
+}
+function attParseTime(t) {
+  const m = String(t).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return null;
+  return { date: `${m[1]}-${m[2]}-${m[3]}`, hhmm: `${m[4]}:${m[5]}`, hour: Number(m[4]),
+    ms: Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) };
+}
+function attPrevDate(dateKey) {
+  const d = new Date(dateKey + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+function attMerge(store, type, person, t) {
+  let dateKey = t.date, nextDay = false;
+  if (type === 'out' && t.hour < ATT_DAY_CUTOFF_HOUR) { dateKey = attPrevDate(t.date); nextDay = true; }
+  const day = store.days[dateKey] || (store.days[dateKey] = {});
+  const rec = day[person] || (day[person] = { in: null, out: null, outNextDay: false, inCount: 0, outCount: 0, _seen: {} });
+  const seenKey = type + '@' + t.date + ' ' + t.hhmm;
+  if (rec._seen[seenKey]) return false;           // 같은 이벤트 재수집 → 무시
+  rec._seen[seenKey] = 1;
+  if (type === 'in') { rec.inCount++; if (!rec.in || t.hhmm < rec.in) rec.in = t.hhmm; }
+  else {
+    rec.outCount++;
+    const cmp = (nextDay ? '24' : '') + t.hhmm;   // 익일 퇴근은 항상 더 늦은 것으로 취급
+    const cur = rec.out ? ((rec.outNextDay ? '24' : '') + rec.out) : null;
+    if (!cur || cmp > cur) { rec.out = t.hhmm; rec.outNextDay = nextDay; }
+  }
+  return true;
+}
+/** 자동화 실행 이력(list) → store 에 반영. 반환: 변경 여부 */
+function attApplyHistory(store, list) {
+  let changed = false;
+  const execTimes = [];                            // 매칭용: 모든 출근/퇴근 실행 시각(ms)
+  for (const item of list || []) {
+    const name = String(item.automation_name || '').trim();
+    const m = name.match(/^(출근|퇴근)[\s_\-:]*(.+)$/);
+    if (!m) continue;
+    const type = m[1] === '출근' ? 'in' : 'out';
+    const person = attNormalizeName(m[2]);
+    if (!person) continue;
+    const logs = item.execute_logs || {};
+    const times = [...(((logs.success || {}).execute_time) || []), ...(((logs.failed || {}).execute_time) || [])];
+    for (const raw of times) {
+      const t = attParseTime(raw); if (!t) continue;
+      execTimes.push(t.ms);
+      if (attMerge(store, type, person, t)) changed = true;
+    }
+  }
+  store._execTimes = execTimes;
+  return changed;
+}
+/** 도어락 로그(list) 의 잠금해제 시각 중 자동화 실행과 ±1분 내 매칭 안 되는 것 → unmatched */
+function attApplyLockLogs(store, list, execTimes) {
+  let changed = false;
+  const seen = new Set();
+  for (const item of list || []) {
+    const lock = String(item.device_name || '도어락');
+    const logs = item.execute_logs || {};
+    for (const [key, v] of Object.entries(logs)) {
+      if (!/lock_state\s+Unlocked/i.test(key)) continue;
+      for (const raw of ((v && v.execute_time) || [])) {
+        const t = attParseTime(raw); if (!t) continue;
+        const k = lock + '@' + t.date + ' ' + t.hhmm;
+        if (seen.has(k)) continue; seen.add(k);
+        const matched = execTimes.some((ms) => Math.abs(ms - t.ms) <= 60000);
+        if (matched) continue;
+        const arr = store.unmatched[t.date] || (store.unmatched[t.date] = []);
+        if (!arr.some((u) => u.lock === lock && u.time === t.hhmm)) { arr.push({ lock, time: t.hhmm }); changed = true; }
+      }
+    }
+  }
+  return changed;
 }
 
+// ---- 저장/복원 (로컬 파일 + 선택적 GitHub 백업) ----
+const GH_TOKEN = (process.env.GH_TOKEN || '').trim();
+const GH_DATA_REPO = (process.env.GH_DATA_REPO || '').trim();   // 예: sunghojeon-bot/aqara-attendance-data
+const GH_DATA_PATH = 'attendance.json';
+let ghSha = null;
+function attLoadLocal() {
+  try {
+    const j = JSON.parse(fs.readFileSync(ATT_PATH, 'utf8'));
+    if (j && j.days) attendance = j; else if (j && typeof j === 'object') attendance = { days: j, unmatched: {} };
+  } catch { /* 없음 */ }
+}
+async function attLoadGitHub() {
+  if (!GH_TOKEN || !GH_DATA_REPO) return false;
+  try {
+    const r = await fetch(`https://api.github.com/repos/${GH_DATA_REPO}/contents/${GH_DATA_PATH}`, {
+      headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'aqara-attendance' },
+    });
+    if (r.status === 404) return false;
+    if (!r.ok) throw new Error('GitHub ' + r.status);
+    const j = await r.json();
+    ghSha = j.sha;
+    const remote = JSON.parse(Buffer.from(j.content, 'base64').toString('utf8'));
+    // 원격(장기 보관본)과 로컬을 병합: 날짜/사람 단위로 더 이른 출근·더 늦은 퇴근 유지
+    for (const [d, people] of Object.entries(remote.days || {})) {
+      const day = attendance.days[d] || (attendance.days[d] = {});
+      for (const [p, r2] of Object.entries(people)) {
+        const cur = day[p];
+        if (!cur) { day[p] = r2; continue; }
+        if (r2.in && (!cur.in || r2.in < cur.in)) cur.in = r2.in;
+        const a = (r2.outNextDay ? '24' : '') + (r2.out || ''), b = (cur.outNextDay ? '24' : '') + (cur.out || '');
+        if (r2.out && (!cur.out || a > b)) { cur.out = r2.out; cur.outNextDay = !!r2.outNextDay; }
+        cur.inCount = Math.max(cur.inCount || 0, r2.inCount || 0); cur.outCount = Math.max(cur.outCount || 0, r2.outCount || 0);
+      }
+    }
+    for (const [d, arr] of Object.entries(remote.unmatched || {})) {
+      const cur = attendance.unmatched[d] || (attendance.unmatched[d] = []);
+      for (const u of arr) if (!cur.some((x) => x.lock === u.lock && x.time === u.time)) cur.push(u);
+    }
+    return true;
+  } catch (e) { writeLogLine('attendance github load failed: ' + e.message); return false; }
+}
+let ghSaveTimer = null;
+function attSave() {
+  const out = { days: {}, unmatched: attendance.unmatched };
+  for (const [d, people] of Object.entries(attendance.days)) {
+    out.days[d] = {};
+    for (const [p, r] of Object.entries(people)) { const { _seen, ...rest } = r; out.days[d][p] = rest; }
+  }
+  const text = JSON.stringify(out, null, 2);
+  try { fs.writeFileSync(ATT_PATH, text, 'utf8'); } catch { /* ignore */ }
+  if (GH_TOKEN && GH_DATA_REPO) {
+    clearTimeout(ghSaveTimer);
+    ghSaveTimer = setTimeout(async () => {
+      try {
+        const body = { message: 'attendance update ' + new Date().toISOString(), content: Buffer.from(text, 'utf8').toString('base64') };
+        if (ghSha) body.sha = ghSha;
+        const r = await fetch(`https://api.github.com/repos/${GH_DATA_REPO}/contents/${GH_DATA_PATH}`, {
+          method: 'PUT', headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json', 'User-Agent': 'aqara-attendance' },
+          body: JSON.stringify(body),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j.content && j.content.sha) ghSha = j.content.sha;
+        else writeLogLine('attendance github save failed: ' + r.status + ' ' + JSON.stringify(j).slice(0, 200));
+      } catch (e) { writeLogLine('attendance github save error: ' + e.message); }
+    }, 3000);
+  }
+}
+function writeLogLine(msg) { try { fs.appendFileSync(path.join(__dirname, 'server.log'), `[${new Date().toISOString()}] ${msg}\n`); } catch { /* ignore */ } }
+
+// ---- 수집 ----
+let lockDevices = { at: 0, list: [] };
+async function attFetchLocks() {
+  if (Date.now() - lockDevices.at < 10 * 60000 && lockDevices.list.length) return lockDevices.list;
+  try {
+    const data = await mcpCallTool('device_base_inquiry', { device_types: ['DoorLock'] });
+    const rows = tableToObjects(data && data.outputs);
+    lockDevices = { at: Date.now(), list: rows.map((r) => String(r['endpoint id'])).filter(Boolean) };
+  } catch { /* keep old */ }
+  return lockDevices.list;
+}
 let attBusy = false;
-async function fetchAttendance(hoursBack) {
+let attLastAt = null;
+async function fetchAttendance(hoursBack, withLocks) {
   if (attBusy || DEMO_MODE) return;
   attBusy = true;
   try {
     const now = Date.now();
-    const data = await mcpCallTool('automation_execution_history_inquiry', {
-      time_range: [kstString(now - hoursBack * 3600000), kstString(now + 60000)],
-    });
+    const range = [kstString(now - hoursBack * 3600000), kstString(now + 60000)];
+    const data = await mcpCallTool('automation_execution_history_inquiry', { time_range: range });
     const list = data && data.outputs && Array.isArray(data.outputs.data) ? data.outputs.data : [];
-    let changed = false;
-    for (const item of list) {
-      const name = String(item.automation_name || '').trim();
-      const m = name.match(/^(출근|퇴근)[\s_\-:]*(.+)$/);
-      if (!m) continue;
-      const type = m[1] === '출근' ? 'in' : 'out';
-      const person = m[2].trim();
-      const logs = item.execute_logs || {};
-      const times = [
-        ...(((logs.success || {}).execute_time) || []),
-        ...(((logs.failed || {}).execute_time) || []), // 동작 실패해도 지문 인식은 된 것
-      ];
-      for (const t of times) {
-        const mm = String(t).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-        if (!mm) continue;
-        attMerge(`${mm[1]}-${mm[2]}-${mm[3]}`, person, type, `${mm[4]}:${mm[5]}`);
-        changed = true;
+    let changed = attApplyHistory(attendance, list);
+    if (withLocks) {
+      const ids = await attFetchLocks();
+      if (ids.length) {
+        const ld = await mcpCallTool('device_log_inquiry', { device_ids: ids, time_range: range });
+        const llist = ld && ld.outputs && Array.isArray(ld.outputs.data) ? ld.outputs.data : [];
+        if (attApplyLockLogs(attendance, llist, attendance._execTimes || [])) changed = true;
       }
     }
-    if (changed) { try { fs.writeFileSync(ATT_PATH, JSON.stringify(attendance, null, 2), 'utf8'); } catch { /* ignore */ } }
-  } catch { /* 다음 폴링에서 재시도 */ } finally { attBusy = false; }
+    attLastAt = new Date().toISOString();
+    if (changed) attSave();
+  } catch (e) { writeLogLine('attendance fetch failed: ' + e.message); } finally { attBusy = false; }
 }
-// 시작 15초 후 7일 백필, 이후 5분마다 최근 25시간 수집
-setTimeout(() => fetchAttendance(7 * 24), 15000);
-setInterval(() => fetchAttendance(25), 5 * 60000);
+attLoadLocal();
+setTimeout(async () => { await attLoadGitHub(); await fetchAttendance(7 * 24, true); }, 8000);   // 부팅: 7일 백필
+setInterval(() => fetchAttendance(3, true), 20 * 1000);                                         // 20초: 최근 3시간
+setInterval(() => fetchAttendance(25, true), 5 * 60 * 1000);                                    // 5분: 최근 25시간
+
+/** API 응답용 가공: 상태 판정 + 확인 필요 항목 */
+function attBuildReport(days) {
+  const tz = Number(config.tzOffsetHours ?? 9);
+  const todayKey = new Date(Date.now() + tz * 3600000).toISOString().slice(0, 10);
+  const out = [];
+  for (let i = 0; i < days; i++) {
+    const key = new Date(Date.parse(todayKey + 'T00:00:00Z') - i * 24 * 3600000).toISOString().slice(0, 10);
+    const day = attendance.days[key] || {};
+    const people = Object.entries(day).map(([name, r]) => {
+      let status = 'ok';
+      if (r.in && !r.out) status = key === todayKey ? 'working' : 'missing_out';
+      else if (!r.in && r.out) status = 'missing_in';
+      return { name, in: r.in, out: r.out, outNextDay: !!r.outNextDay, inCount: r.inCount || 0, outCount: r.outCount || 0, status };
+    }).sort((a, b) => String(a.in || '99').localeCompare(String(b.in || '99')));
+    out.push({ date: key, people, unmatched: attendance.unmatched[key] || [] });
+  }
+  return out;
+}
+module.exports = module.exports || {};
+Object.assign(module.exports, { attApplyHistory, attApplyLockLogs, attBuildReport, attNormalizeName, attStore: () => attendance });
 
 // ---------------------------------------------------------------------------
 // 층별 판정
@@ -659,18 +825,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/api/attendance') {
       const days = Math.min(92, Math.max(1, Number(url.searchParams.get('days') || 31)));
-      const tz = Number(config.tzOffsetHours ?? 9);
-      const out = [];
-      for (let i = 0; i < days; i++) {
-        const d = new Date(Date.now() + tz * 3600000 - i * 24 * 3600000);
-        const key = d.toISOString().slice(0, 10);
-        const day = attendance[key] || {};
-        const people = Object.entries(day)
-          .map(([name, r]) => ({ name, in: r.in, out: r.out }))
-          .sort((a, b) => String(a.in || '99').localeCompare(String(b.in || '99')));
-        out.push({ date: key, people });
-      }
-      return send(res, 200, { updatedAt: new Date().toISOString(), days: out });
+      return send(res, 200, { updatedAt: new Date().toISOString(), collectedAt: attLastAt,
+        pollSec: 20, storage: (GH_TOKEN && GH_DATA_REPO) ? 'github+local' : 'local', days: attBuildReport(days) });
     }
     if (url.pathname === '/api/status') return send(res, 200, cache);
     if (url.pathname === '/api/config' && req.method === 'GET') {

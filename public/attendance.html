@@ -15,45 +15,75 @@
   body {
     font-family: 'Pretendard Variable', Pretendard, -apple-system, sans-serif;
     background: radial-gradient(1200px 700px at 70% -10%, rgba(53,196,181,.08), transparent 60%), var(--bg);
-    color: var(--ink); min-height: 100vh; padding: 34px 20px 60px;
+    color: var(--ink); min-height: 100vh; padding: 28px 20px 60px;
   }
-  .wrap { max-width: 860px; margin: 0 auto; }
-  .brand { font-size: .78rem; font-weight: 700; letter-spacing: .3em; color: var(--teal); margin-bottom: 8px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  .brand { font-size: .78rem; font-weight: 700; letter-spacing: .3em; color: var(--teal); margin-bottom: 6px; }
   .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  h1 { font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; }
-  .sub { color: var(--ink-2); font-size: .88rem; margin-top: 5px; }
+  h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
+  .sub { color: var(--ink-2); font-size: .86rem; margin-top: 4px; }
   .clock { text-align: right; }
-  .clock .t { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .clock .d { font-size: .78rem; color: var(--ink-3); }
-  h2 { font-size: 1.02rem; font-weight: 800; margin: 34px 0 14px; color: var(--ink-2); letter-spacing: .04em; }
-  .today { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
-  .pcard {
-    background: var(--card); border: 1px solid var(--line); border-radius: 18px;
-    padding: 18px 20px; backdrop-filter: blur(10px);
+  .clock .t { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .clock .d { font-size: .76rem; color: var(--ink-3); }
+  .live { display: inline-flex; align-items: center; gap: 6px; }
+  .live::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 8px rgba(55,214,122,.7); animation: blink 1.6s infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 24px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 18px; cursor: pointer; transition: border-color .2s; }
+  .stat:hover { border-color: rgba(255,255,255,.2); }
+  .stat.active { border-color: var(--teal); background: rgba(53,196,181,.08); }
+  .stat .n { font-size: 1.7rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat .l { font-size: .78rem; color: var(--ink-3); margin-top: 4px; }
+  .stat.c-good .n { color: var(--good); } .stat.c-blue .n { color: var(--blue); } .stat.c-gold .n { color: var(--gold); }
+  .stat.c-busy .n { color: var(--busy); } .stat.c-dim .n { color: var(--ink-2); }
+
+  .tabs { display: flex; gap: 6px; margin-top: 26px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .tab { padding: 10px 16px; font-size: .92rem; font-weight: 700; color: var(--ink-3); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: var(--ink); border-bottom-color: var(--teal); }
+  .tab .cnt { font-size: .74rem; color: var(--gold); margin-left: 4px; }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 16px 0 12px; }
+  .toolbar input, .toolbar select {
+    background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 10px; color: var(--ink);
+    font-family: inherit; font-size: .9rem; padding: 9px 12px; outline: none; color-scheme: dark;
   }
-  .pcard .name { font-size: 1.12rem; font-weight: 800; margin-bottom: 12px; }
-  .pcard .row { display: flex; justify-content: space-between; font-size: .92rem; padding: 3px 0; }
-  .pcard .lbl { color: var(--ink-3); }
-  .t-in { color: var(--good); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .t-out { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .t-dur { color: var(--blue); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .t-none { color: var(--ink-3); }
-  .empty {
-    background: var(--card); border: 1px dashed var(--line); border-radius: 18px;
-    padding: 26px; text-align: center; color: var(--ink-3); font-size: .92rem;
-  }
-  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; }
-  table { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 560px; }
-  th, td { padding: 10px 16px; text-align: left; white-space: nowrap; }
-  thead th { background: rgba(255,255,255,.05); color: var(--ink-2); font-weight: 700; font-size: .8rem; letter-spacing: .05em; }
+  .toolbar input:focus, .toolbar select:focus { border-color: rgba(53,196,181,.55); }
+  .toolbar input[type=search] { width: 220px; }
+  .chip { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: .8rem; font-weight: 700; color: var(--ink-3); cursor: pointer; background: transparent; font-family: inherit; }
+  .chip.active { color: var(--ink); border-color: rgba(53,196,181,.6); background: rgba(53,196,181,.12); }
+  .btn { margin-left: auto; padding: 9px 14px; border-radius: 10px; border: 1px solid rgba(53,196,181,.5); background: rgba(53,196,181,.1); color: var(--teal); font-family: inherit; font-size: .84rem; font-weight: 700; cursor: pointer; }
+  .btn:hover { background: rgba(53,196,181,.2); }
+
+  .tablewrap { overflow: auto; border: 1px solid var(--line); border-radius: 16px; max-height: 68vh; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 640px; }
+  th, td { padding: 9px 14px; text-align: left; white-space: nowrap; }
+  thead th { position: sticky; top: 0; background: #131a24; color: var(--ink-2); font-weight: 700; font-size: .78rem; letter-spacing: .05em; z-index: 1; }
   tbody tr { border-top: 1px solid rgba(255,255,255,.05); }
   tbody tr:hover { background: rgba(255,255,255,.03); }
   td.date { color: var(--ink-3); font-variant-numeric: tabular-nums; }
   td.name { font-weight: 700; }
-  .note { margin-top: 26px; font-size: .78rem; color: var(--ink-3); line-height: 1.7; }
-  .back { display: inline-block; margin-top: 26px; color: var(--ink-3); font-size: .82rem; text-decoration: none; }
-  .back:hover { color: var(--ink-2); }
+  td.num { font-variant-numeric: tabular-nums; }
+  .t-in { color: var(--good); font-weight: 700; } .t-out { color: var(--gold); font-weight: 700; }
+  .t-dur { color: var(--blue); font-weight: 700; } .t-none { color: var(--ink-3); }
+  .badge { display: inline-block; font-size: .7rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+  .b-ok { color: var(--good); background: rgba(55,214,122,.12); }
+  .b-work { color: var(--blue); background: rgba(110,168,255,.14); }
+  .b-warn { color: var(--gold); background: rgba(231,196,106,.14); }
+  .b-bad { color: var(--busy); background: rgba(255,93,93,.13); }
+  .b-dim { color: var(--ink-3); background: rgba(255,255,255,.06); }
+  .small { font-size: .72rem; color: var(--ink-3); margin-left: 4px; }
+  .empty { padding: 30px; text-align: center; color: var(--ink-3); font-size: .9rem; }
+  .sumbar { display: flex; gap: 22px; flex-wrap: wrap; font-size: .86rem; color: var(--ink-2); margin: 4px 0 12px; }
+  .sumbar b { color: var(--ink); }
+  .review .item { display: grid; grid-template-columns: 100px 100px 1fr; gap: 12px; align-items: baseline; padding: 9px 14px; font-size: .9rem; border-top: 1px solid rgba(255,255,255,.05); }
+  .review .d { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .review .k { color: var(--gold); font-weight: 700; }
+  .note { margin-top: 22px; font-size: .76rem; color: var(--ink-3); line-height: 1.7; }
   .upd { font-size: .74rem; color: var(--ink-3); margin-top: 8px; }
+  .back { display: inline-block; margin-top: 22px; color: var(--ink-3); font-size: .82rem; text-decoration: none; }
+  .back:hover { color: var(--ink-2); }
+  @media (max-width: 640px) { .toolbar input[type=search] { width: 100%; } .btn { margin-left: 0; } }
 </style>
 </head>
 <body>
@@ -62,94 +92,192 @@
   <div class="head">
     <div>
       <h1>🕐 출퇴근 기록</h1>
-      <div class="sub">출근·퇴근 체크 도어락 지문 인식 기준 · 5분 간격 자동 수집</div>
+      <div class="sub">출근·퇴근 체크 도어락 지문 인식 기준 · <span class="live">20초 간격 실시간 수집</span></div>
     </div>
     <div class="clock"><div class="t" id="clock">--:--:--</div><div class="d" id="date"></div></div>
   </div>
 
-  <h2 id="todayTitle">오늘</h2>
-  <div class="today" id="today"></div>
+  <div class="stats" id="stats"></div>
 
-  <h2>지난 기록 (최근 31일)</h2>
-  <div class="tablewrap">
-    <table>
-      <thead><tr><th>날짜</th><th>이름</th><th>출근</th><th>퇴근</th><th>근무시간</th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
+  <div class="tabs">
+    <div class="tab active" data-tab="today">오늘</div>
+    <div class="tab" data-tab="byday">날짜별</div>
+    <div class="tab" data-tab="byperson">직원별</div>
+    <div class="tab" data-tab="review">확인 필요<span class="cnt" id="reviewCnt"></span></div>
   </div>
+
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="이름 검색">
+    <span id="ctlDay" style="display:none"><input type="date" id="dayPick"></span>
+    <span id="ctlPerson" style="display:none"><select id="personPick"></select></span>
+    <span id="ctlFilter">
+      <button class="chip active" data-f="all">전체</button>
+      <button class="chip" data-f="working">근무 중</button>
+      <button class="chip" data-f="ok">퇴근 완료</button>
+      <button class="chip" data-f="absent">미출근</button>
+      <button class="chip" data-f="issue">누락</button>
+    </span>
+    <button class="btn" id="csv">⬇ CSV 내보내기</button>
+  </div>
+
+  <div class="sumbar" id="sumbar"></div>
+  <div class="tablewrap" id="tablewrap"></div>
   <div class="upd" id="upd"></div>
 
   <div class="note">
-    · 출근 = 그날 출근 체크 도어락 첫 지문 인식 시각, 퇴근 = 그날 퇴근 체크 도어락 마지막 지문 인식 시각<br>
-    · 새 직원 등록: 도어락에 지문 등록 후, 아카라 앱에서 자동화 "출근 이름" / "퇴근 이름" 두 개를 만들면 자동으로 집계에 포함됩니다
+    · 출근 = 그날 출근 체크 도어락 첫 지문 인식, 퇴근 = 퇴근 체크 도어락 마지막 지문 인식 · 05:00 이전 퇴근은 전날 근무로 기록(익일 표시)<br>
+    · 미출근 = 최근 31일 내 기록이 있는 직원 중 오늘 기록이 없는 사람 · 앱 개방·수동 문열림·미등록 지문은 출퇴근으로 기록되지 않고 "확인 필요"에만 표시<br>
+    · 새 직원: 도어락 지문 등록 후 아카라 앱 자동화 "출근 이름" / "퇴근 이름" 생성 → 자동 집계
   </div>
   <a class="back" href="/">← 화장실 재실 현황판으로</a>
 </div>
 <script>
+const $ = (id) => document.getElementById(id);
 function tickClock() {
-  const n = new Date();
-  const p = (x) => String(x).padStart(2, '0');
-  document.getElementById('clock').textContent = `${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
-  document.getElementById('date').textContent = n.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+  const n = new Date(), p = (x) => String(x).padStart(2, '0');
+  $('clock').textContent = `${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+  $('date').textContent = n.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
 }
 tickClock(); setInterval(tickClock, 1000);
 
-function dur(tin, tout) {
-  if (!tin || !tout) return null;
-  const [a, b] = tin.split(':').map(Number), [c, d] = tout.split(':').map(Number);
-  let m = (c * 60 + d) - (a * 60 + b);
-  if (m < 0) return null;
-  return Math.floor(m / 60) + '시간 ' + (m % 60) + '분';
+let DATA = null, tab = 'today', filter = 'all', q = '';
+const STATUS = { ok: ['퇴근 완료', 'b-ok'], working: ['근무 중', 'b-work'], missing_out: ['퇴근 누락', 'b-warn'], missing_in: ['출근 누락', 'b-bad'], absent: ['미출근', 'b-dim'] };
+const badge = (st) => { const s = STATUS[st] || STATUS.ok; return `<span class="badge ${s[1]}">${s[0]}</span>`; };
+const outText = (p) => p.out ? (p.outNextDay ? '익일 ' + p.out : p.out) : (p.status === 'working' ? '근무 중' : '-');
+function durMin(p) {
+  if (!p.in || !p.out) return null;
+  const [a, b] = p.in.split(':').map(Number), [c, d] = p.out.split(':').map(Number);
+  const m = (c * 60 + d) + (p.outNextDay ? 1440 : 0) - (a * 60 + b);
+  return m < 0 ? null : m;
 }
+const fmtMin = (m) => m == null ? null : Math.floor(m / 60) + '시간 ' + (m % 60) + '분';
+const durText = (p) => fmtMin(durMin(p));
+
+function knownPeople(days) {
+  const set = new Set();
+  for (const d of days) for (const p of d.people) set.add(p.name);
+  return [...set].sort((a, b) => a.localeCompare(b, 'ko'));
+}
+function rowsForDay(day, days) {
+  const map = new Map(day.people.map((p) => [p.name, p]));
+  const rows = [...day.people];
+  if (day === days[0]) for (const n of knownPeople(days)) if (!map.has(n)) rows.push({ name: n, in: null, out: null, status: 'absent' });
+  return rows;
+}
+function applyFilter(rows) {
+  return rows.filter((p) => {
+    if (q && !p.name.includes(q)) return false;
+    if (filter === 'all') return true;
+    if (filter === 'issue') return p.status === 'missing_in' || p.status === 'missing_out';
+    return p.status === filter;
+  });
+}
+function table(headers, body) {
+  return `<table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body || ''}</tbody></table>`;
+}
+function personRow(p, dateCol) {
+  const d = durText(p);
+  return `<tr>${dateCol ? `<td class="date">${dateCol}</td>` : ''}<td class="name">${p.name}</td>
+    <td class="num ${p.in ? 't-in' : 't-none'}">${p.in || '-'}${p.inCount > 1 ? `<span class="small">${p.inCount}회</span>` : ''}</td>
+    <td class="num ${p.out ? 't-out' : 't-none'}">${outText(p)}${p.outCount > 1 ? `<span class="small">${p.outCount}회</span>` : ''}</td>
+    <td class="num ${d ? 't-dur' : 't-none'}">${d || '-'}</td><td>${badge(p.status)}</td></tr>`;
+}
+
+let currentRows = [];   // CSV 용
+function render() {
+  if (!DATA) return;
+  const days = DATA.days || [];
+  const today = days[0] || { date: '', people: [], unmatched: [] };
+  const known = knownPeople(days);
+  const todayRows = rowsForDay(today, days);
+  const c = (st) => todayRows.filter((p) => p.status === st).length;
+  const reviewItems = buildReview(days);
+  const statDefs = [
+    ['all', today.people.length, '오늘 출근', 'c-good'], ['working', c('working'), '근무 중', 'c-blue'], ['ok', c('ok'), '퇴근 완료', 'c-dim'],
+    ['absent', c('absent'), '미출근', 'c-gold'], ['issue', reviewItems.length, '확인 필요', 'c-busy'],
+  ];
+  $('stats').innerHTML = statDefs.map(([f, n, l, cls]) => `<div class="stat ${cls} ${tab === 'today' && filter === f ? 'active' : ''}" data-f="${f}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+  $('stats').querySelectorAll('.stat').forEach((el) => el.onclick = () => { const f = el.dataset.f; if (f === 'issue') { setTab('review'); } else { setTab('today'); filter = f; setChip(); render(); } });
+  $('reviewCnt').textContent = reviewItems.length ? reviewItems.length : '';
+  $('ctlDay').style.display = tab === 'byday' ? '' : 'none';
+  $('ctlPerson').style.display = tab === 'byperson' ? '' : 'none';
+  $('ctlFilter').style.display = (tab === 'today' || tab === 'byday') ? '' : 'none';
+  $('q').style.display = tab === 'byperson' ? 'none' : '';
+
+  const wrap = $('tablewrap'), sum = $('sumbar');
+  if (tab === 'today') {
+    const rows = applyFilter(todayRows).sort((a, b) => (a.in || '99').localeCompare(b.in || '99') || a.name.localeCompare(b.name, 'ko'));
+    currentRows = rows.map((p) => [today.date, p.name, p.in || '', outText(p), durText(p) || '', STATUS[p.status][0]]);
+    sum.innerHTML = `<span>${today.date}</span><span>등록 직원 <b>${known.length}</b>명</span><span>표시 <b>${rows.length}</b>명</span>`;
+    wrap.innerHTML = rows.length ? table(['이름', '출근', '퇴근', '근무시간', '상태'], rows.map((p) => personRow(p)).join(''))
+      : `<div class="empty">${known.length ? '조건에 맞는 직원이 없습니다.' : '아직 기록이 없습니다. 도어락 지문 인식 후 30초~1분 내에 표시됩니다.'}</div>`;
+  } else if (tab === 'byday') {
+    const pick = $('dayPick').value || (days[1] ? days[1].date : today.date);
+    $('dayPick').value = pick;
+    const day = days.find((d) => d.date === pick) || { date: pick, people: [], unmatched: [] };
+    const rows = applyFilter(day.people).sort((a, b) => (a.in || '99').localeCompare(b.in || '99'));
+    currentRows = rows.map((p) => [pick, p.name, p.in || '', outText(p), durText(p) || '', STATUS[p.status][0]]);
+    const tot = rows.reduce((s, p) => s + (durMin(p) || 0), 0);
+    sum.innerHTML = `<span>${pick}</span><span>출근 <b>${day.people.length}</b>명</span><span>총 근무 <b>${fmtMin(tot) || '0분'}</b></span><span>미매칭 인식 <b>${(day.unmatched || []).length}</b>건</span>`;
+    wrap.innerHTML = rows.length ? table(['이름', '출근', '퇴근', '근무시간', '상태'], rows.map((p) => personRow(p)).join('')) : '<div class="empty">해당 날짜 기록이 없습니다.</div>';
+  } else if (tab === 'byperson') {
+    const sel = $('personPick');
+    if (sel.options.length !== known.length || [...sel.options].some((o, i) => o.value !== known[i])) {
+      const prev = sel.value; sel.innerHTML = known.map((n) => `<option value="${n}">${n}</option>`).join(''); if (known.includes(prev)) sel.value = prev;
+    }
+    const name = sel.value;
+    const rows = [];
+    for (const d of days) { const p = d.people.find((x) => x.name === name); if (p) rows.push({ date: d.date, p }); }
+    currentRows = rows.map(({ date, p }) => [date, p.name, p.in || '', outText(p), durText(p) || '', STATUS[p.status][0]]);
+    const tot = rows.reduce((s, r) => s + (durMin(r.p) || 0), 0);
+    const ins = rows.filter((r) => r.p.in).map((r) => { const [h, m] = r.p.in.split(':').map(Number); return h * 60 + m; });
+    const avg = ins.length ? Math.round(ins.reduce((a, b) => a + b, 0) / ins.length) : null;
+    sum.innerHTML = name ? `<span><b>${name}</b></span><span>근무일 <b>${rows.length}</b>일</span><span>총 근무 <b>${fmtMin(tot) || '0분'}</b></span><span>평균 출근 <b>${avg != null ? String(Math.floor(avg / 60)).padStart(2, '0') + ':' + String(avg % 60).padStart(2, '0') : '-'}</b></span><span>누락 <b>${rows.filter((r) => r.p.status.startsWith('missing')).length}</b>건</span>` : '';
+    wrap.innerHTML = rows.length ? table(['날짜', '이름', '출근', '퇴근', '근무시간', '상태'], rows.map(({ date, p }) => personRow(p, date)).join('')) : '<div class="empty">직원을 선택하세요.</div>';
+  } else {
+    currentRows = reviewItems.map((i) => [i.d, i.k, i.t, '', '', '']);
+    sum.innerHTML = `<span>최근 31일 확인 필요 <b>${reviewItems.length}</b>건</span>`;
+    wrap.innerHTML = reviewItems.length
+      ? `<div class="review">${reviewItems.map((i) => `<div class="item"><span class="d">${i.d}</span><span class="k">${i.k}</span><span>${i.t}</span></div>`).join('')}</div>`
+      : '<div class="empty">확인이 필요한 항목이 없습니다.</div>';
+  }
+  const col = DATA.collectedAt ? new Date(DATA.collectedAt).toLocaleTimeString('ko-KR', { hour12: false }) : '-';
+  $('upd').textContent = `마지막 수집 ${col} · 저장: ${DATA.storage === 'github+local' ? '서버 + GitHub 백업' : '서버'}`;
+}
+function buildReview(days) {
+  const items = [];
+  for (const day of days) {
+    for (const u of (day.unmatched || [])) items.push({ d: day.date, k: '미등록 인식', t: `${u.lock} ${u.time} — 자동화와 매칭되지 않은 잠금해제 (미등록 지문 / 앱 개방 등)` });
+    for (const p of day.people) {
+      if (p.status === 'missing_out') items.push({ d: day.date, k: '퇴근 누락', t: `${p.name} — 출근 ${p.in}, 퇴근 기록 없음` });
+      if (p.status === 'missing_in') items.push({ d: day.date, k: '출근 누락', t: `${p.name} — 퇴근 ${outText(p)}, 출근 기록 없음` });
+    }
+  }
+  return items;
+}
+function setTab(t) { tab = t; document.querySelectorAll('.tab').forEach((el) => el.classList.toggle('active', el.dataset.tab === t)); }
+function setChip() { document.querySelectorAll('.chip').forEach((el) => el.classList.toggle('active', el.dataset.f === filter)); }
+document.querySelectorAll('.tab').forEach((el) => el.onclick = () => { setTab(el.dataset.tab); render(); });
+document.querySelectorAll('.chip').forEach((el) => el.onclick = () => { filter = el.dataset.f; setChip(); render(); });
+$('q').oninput = (e) => { q = e.target.value.trim(); render(); };
+$('dayPick').onchange = render;
+$('personPick').onchange = render;
+$('csv').onclick = () => {
+  const head = tab === 'review' ? ['날짜', '구분', '내용'] : ['날짜', '이름', '출근', '퇴근', '근무시간', '상태'];
+  const lines = [head, ...currentRows.map((r) => r.slice(0, head.length))].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `출퇴근_${tab}_${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(a.href);
+};
 
 async function load() {
   try {
     const r = await fetch('/api/attendance?days=31');
-    const j = await r.json();
-    const days = j.days || [];
-    // 오늘
-    const today = days[0] || { date: '', people: [] };
-    document.getElementById('todayTitle').textContent = '오늘 (' + today.date + ')';
-    const box = document.getElementById('today');
-    box.innerHTML = '';
-    if (!today.people.length) {
-      box.innerHTML = '<div class="empty">아직 오늘 출근 기록이 없습니다.<br>도어락 지문 인식과 사람별 자동화("출근 이름"/"퇴근 이름")가 설정되면 자동으로 표시됩니다.</div>';
-    } else {
-      for (const p of today.people) {
-        const d = dur(p.in, p.out);
-        const el = document.createElement('div');
-        el.className = 'pcard';
-        el.innerHTML = `
-          <div class="name">${p.name}</div>
-          <div class="row"><span class="lbl">출근</span><span class="${p.in ? 't-in' : 't-none'}">${p.in || '-'}</span></div>
-          <div class="row"><span class="lbl">퇴근</span><span class="${p.out ? 't-out' : 't-none'}">${p.out || '근무 중'}</span></div>
-          <div class="row"><span class="lbl">근무시간</span><span class="${d ? 't-dur' : 't-none'}">${d || '-'}</span></div>`;
-        box.appendChild(el);
-      }
-    }
-    // 지난 기록
-    const rows = document.getElementById('rows');
-    rows.innerHTML = '';
-    let any = false;
-    for (const day of days.slice(1)) {
-      for (const p of day.people) {
-        any = true;
-        const tr = document.createElement('tr');
-        const d = dur(p.in, p.out);
-        tr.innerHTML = `<td class="date">${day.date}</td><td class="name">${p.name}</td>
-          <td class="${p.in ? 't-in' : 't-none'}">${p.in || '-'}</td>
-          <td class="${p.out ? 't-out' : 't-none'}">${p.out || '-'}</td>
-          <td class="${d ? 't-dur' : 't-none'}">${d || '-'}</td>`;
-        rows.appendChild(tr);
-      }
-    }
-    if (!any) rows.innerHTML = '<tr><td colspan="5" style="color:var(--ink-3); text-align:center; padding:22px">기록 없음</td></tr>';
-    document.getElementById('upd').textContent = '마지막 갱신 ' + new Date(j.updatedAt).toLocaleTimeString('ko-KR', { hour12: false });
-  } catch (e) {
-    document.getElementById('upd').textContent = '서버 연결 실패 — 잠시 후 다시 시도합니다';
-  }
+    DATA = await r.json();
+    render();
+  } catch (e) { $('upd').textContent = '서버 연결 실패 — 잠시 후 다시 시도합니다'; }
 }
-load(); setInterval(load, 60000);
+load(); setInterval(load, 10000);
 </script>
 </body>
 </html>

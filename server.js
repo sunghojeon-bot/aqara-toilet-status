@@ -482,7 +482,10 @@ async function sheetLoad() {
     for (const u of (j.unmatched || [])) {
       const date = String(u.date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
       const arr = attendance.unmatched[date] || (attendance.unmatched[date] = []);
-      if (!arr.some((x) => x.lock === u.lock && x.time === u.time)) arr.push({ lock: String(u.lock || ''), time: String(u.time || '') });
+      let cur = arr.find((x) => x.lock === u.lock && x.time === u.time);
+      if (!cur) { cur = { lock: String(u.lock || ''), time: String(u.time || '') }; arr.push(cur); }
+      cur.done = String(u.done || '').toUpperCase() === 'Y';   // 시트 '처리' 체크 → 확인 처리됨
+      cur.memo = String(u.memo || '');
     }
     // 외근·출장·휴가 (시트 '외근출장' 탭): 날짜별 기록에 leave 로 표시, 도어락 기록이 없어도 그날 행 생성
     const sheetKeys = new Set((j.rows || []).map((r) => String(r.date || '').slice(0, 10) + '|' + attNormalizeName(r.name)));

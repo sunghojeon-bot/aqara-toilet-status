@@ -505,7 +505,8 @@ async function sheetLoad() {
       if (!sheetKeys.has(date + '|' + name)) sheetQueue(date, name);   // 시트 출퇴근기록에도 행 생성 (근무일수 집계용)
     }
     for (const [d, people] of Object.entries(attendance.days)) for (const [p, r] of Object.entries(people)) {
-      if (r.leave && !leaveKeys.has(d + '|' + p)) delete r.leave;   // 시트에서 지워진 항목 반영
+      if (r.leave && !leaveKeys.has(d + '|' + p)) delete r.leave;   // 시트/캘린더에서 지워진 항목 반영
+      if (!r.in && !r.out && !r.leave && !r.manual) delete people[p];   // 휴가 취소 등으로 빈 껍데기만 남은 기록 제거
     }
     sheetLastOk = new Date().toISOString(); sheetLastErr = null;
     return true;

@@ -363,6 +363,7 @@ function attMerge(store, type, person, t) {
   const seenKey = type + '@' + t.date + ' ' + t.hhmm;
   if (rec._seen[seenKey]) return false;           // 같은 이벤트 재수집 → 무시
   rec._seen[seenKey] = 1;
+  if (rec.manual) return false;                   // 시트에서 수동수정된 행은 유지
   if (type === 'in') { rec.inCount++; if (!rec.in || t.hhmm < rec.in) rec.in = t.hhmm; }
   else {
     rec.outCount++;
@@ -370,6 +371,7 @@ function attMerge(store, type, person, t) {
     const cur = rec.out ? ((rec.outNextDay ? '24' : '') + rec.out) : null;
     if (!cur || cmp > cur) { rec.out = t.hhmm; rec.outNextDay = nextDay; }
   }
+  if (typeof sheetQueue === 'function') sheetQueue(dateKey, person);
   return true;
 }
 /** 자동화 실행 이력(list) → store 에 반영. 반환: 변경 여부 */
@@ -410,11 +412,81 @@ function attApplyLockLogs(store, list, execTimes) {
         const matched = execTimes.some((ms) => Math.abs(ms - t.ms) <= 60000);
         if (matched) continue;
         const arr = store.unmatched[t.date] || (store.unmatched[t.date] = []);
-        if (!arr.some((u) => u.lock === lock && u.time === t.hhmm)) { arr.push({ lock, time: t.hhmm }); changed = true; }
+        if (!arr.some((u) => u.lock === lock && u.time === t.hhmm)) { arr.push({ lock, time: t.hhmm }); changed = true; if (typeof sheetQueueUnmatched === 'function') sheetQueueUnmatched(t.date, { lock, time: t.hhmm }); }
       }
     }
   }
   return changed;
+}
+
+// ---- Google 스프레드시트 양방향 연동 (Apps Script 웹앱) ----
+//   환경변수: SHEET_WEBHOOK_URL (Apps Script 배포 URL), SHEET_SECRET (공유 비밀키)
+//   서버→시트: 기록 변경 시 upsert (날짜+이름 기준), 확인필요 append
+//   시트→서버: 부팅 시 전체 복원 + 5분마다 재로드. 시트에서 '수동수정'=Y 인 행은 시트 값이 우선(서버가 덮어쓰지 않음)
+const SHEET_URL = (process.env.SHEET_WEBHOOK_URL || '').trim();
+const SHEET_SECRET = (process.env.SHEET_SECRET || '').trim();
+let sheetPending = { rows: new Map(), unmatched: [] };
+let sheetTimer = null;
+let sheetLastOk = null, sheetLastErr = null;
+const manualRows = new Set();   // 'date|name' — 시트에서 수동수정된 행
+async function sheetCall(payload) {
+  const r = await fetch(SHEET_URL, {
+    method: 'POST', redirect: 'follow',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // Apps Script는 text/plain 이 CORS/preflight 없이 안전
+    body: JSON.stringify({ secret: SHEET_SECRET, ...payload }),
+  });
+  const text = await r.text();
+  let j; try { j = JSON.parse(text); } catch { throw new Error('sheet bad response: ' + text.slice(0, 120)); }
+  if (!j.ok) throw new Error('sheet error: ' + (j.error || 'unknown'));
+  return j;
+}
+function sheetQueue(dateKey, person) {
+  if (!SHEET_URL) return;
+  if (manualRows.has(dateKey + '|' + person)) return;
+  const r = (attendance.days[dateKey] || {})[person]; if (!r) return;
+  const status = r.in && r.out ? 'ok' : (r.in ? 'in_only' : 'out_only');
+  sheetPending.rows.set(dateKey + '|' + person, { date: dateKey, name: person, in: r.in || '', out: r.out || '', outNextDay: r.outNextDay ? 'Y' : '', inCount: r.inCount || 0, outCount: r.outCount || 0, status });
+  sheetFlushLater();
+}
+function sheetQueueUnmatched(dateKey, u) { if (!SHEET_URL) return; sheetPending.unmatched.push({ date: dateKey, lock: u.lock, time: u.time }); sheetFlushLater(); }
+function sheetFlushLater() { clearTimeout(sheetTimer); sheetTimer = setTimeout(sheetFlush, 4000); }
+async function sheetFlush() {
+  if (!SHEET_URL) return;
+  const rows = [...sheetPending.rows.values()], unmatched = sheetPending.unmatched;
+  if (!rows.length && !unmatched.length) return;
+  sheetPending = { rows: new Map(), unmatched: [] };
+  try { await sheetCall({ action: 'upsert', rows, unmatched }); sheetLastOk = new Date().toISOString(); sheetLastErr = null; }
+  catch (e) { sheetLastErr = e.message; writeLogLine('sheet upsert failed: ' + e.message);
+    for (const r of rows) sheetPending.rows.set(r.date + '|' + r.name, r); sheetPending.unmatched.push(...unmatched); sheetFlushLater(); }
+}
+/** 시트 → 서버 복원/동기화 */
+async function sheetLoad() {
+  if (!SHEET_URL) return false;
+  try {
+    const j = await sheetCall({ action: 'load' });
+    for (const row of (j.rows || [])) {
+      const date = String(row.date || '').slice(0, 10), name = attNormalizeName(row.name);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !name) continue;
+      const day = attendance.days[date] || (attendance.days[date] = {});
+      const cur = day[name] || (day[name] = { in: null, out: null, outNextDay: false, inCount: 0, outCount: 0, _seen: {} });
+      const manual = String(row.manual || '').trim().toUpperCase() === 'Y';
+      const sIn = String(row.in || '').trim() || null, sOut = String(row.out || '').trim() || null;
+      const sNext = String(row.outNextDay || '').trim().toUpperCase() === 'Y';
+      if (manual) { manualRows.add(date + '|' + name); cur.in = sIn; cur.out = sOut; cur.outNextDay = sNext; cur.manual = true; continue; }
+      manualRows.delete(date + '|' + name); cur.manual = false;
+      if (sIn && (!cur.in || sIn < cur.in)) cur.in = sIn;
+      const a = (sNext ? '24' : '') + (sOut || ''), b = (cur.outNextDay ? '24' : '') + (cur.out || '');
+      if (sOut && (!cur.out || a > b)) { cur.out = sOut; cur.outNextDay = sNext; }
+      cur.inCount = Math.max(cur.inCount || 0, Number(row.inCount) || 0); cur.outCount = Math.max(cur.outCount || 0, Number(row.outCount) || 0);
+    }
+    for (const u of (j.unmatched || [])) {
+      const date = String(u.date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const arr = attendance.unmatched[date] || (attendance.unmatched[date] = []);
+      if (!arr.some((x) => x.lock === u.lock && x.time === u.time)) arr.push({ lock: String(u.lock || ''), time: String(u.time || '') });
+    }
+    sheetLastOk = new Date().toISOString(); sheetLastErr = null;
+    return true;
+  } catch (e) { sheetLastErr = e.message; writeLogLine('sheet load failed: ' + e.message); return false; }
 }
 
 // ---- 저장/복원 (로컬 파일 + 선택적 GitHub 백업) ----
@@ -521,7 +593,8 @@ async function fetchAttendance(hoursBack, withLocks) {
   } catch (e) { writeLogLine('attendance fetch failed: ' + e.message); } finally { attBusy = false; }
 }
 attLoadLocal();
-setTimeout(async () => { await attLoadGitHub(); await fetchAttendance(7 * 24, true); }, 8000);   // 부팅: 7일 백필
+setTimeout(async () => { await attLoadGitHub(); await sheetLoad(); await fetchAttendance(7 * 24, true); }, 8000);   // 부팅: 시트 복원 + 7일 백필
+setInterval(() => { sheetLoad(); }, 5 * 60 * 1000);                                             // 5분: 시트 수동수정 반영
 setInterval(() => fetchAttendance(3, true), 20 * 1000);                                         // 20초: 최근 3시간
 setInterval(() => fetchAttendance(25, true), 5 * 60 * 1000);                                    // 5분: 최근 25시간
 
@@ -537,7 +610,7 @@ function attBuildReport(days) {
       let status = 'ok';
       if (r.in && !r.out) status = key === todayKey ? 'working' : 'missing_out';
       else if (!r.in && r.out) status = 'missing_in';
-      return { name, in: r.in, out: r.out, outNextDay: !!r.outNextDay, inCount: r.inCount || 0, outCount: r.outCount || 0, status };
+      return { name, in: r.in, out: r.out, outNextDay: !!r.outNextDay, inCount: r.inCount || 0, outCount: r.outCount || 0, status, manual: !!r.manual };
     }).sort((a, b) => String(a.in || '99').localeCompare(String(b.in || '99')));
     out.push({ date: key, people, unmatched: attendance.unmatched[key] || [] });
   }
@@ -826,7 +899,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/attendance') {
       const days = Math.min(92, Math.max(1, Number(url.searchParams.get('days') || 31)));
       return send(res, 200, { updatedAt: new Date().toISOString(), collectedAt: attLastAt,
-        pollSec: 20, storage: (GH_TOKEN && GH_DATA_REPO) ? 'github+local' : 'local', days: attBuildReport(days) });
+        pollSec: 20, storage: SHEET_URL ? 'sheet+local' : ((GH_TOKEN && GH_DATA_REPO) ? 'github+local' : 'local'),
+        sheet: SHEET_URL ? { lastOk: sheetLastOk, lastErr: sheetLastErr } : null, days: attBuildReport(days) });
     }
     if (url.pathname === '/api/status') return send(res, 200, cache);
     if (url.pathname === '/api/config' && req.method === 'GET') {

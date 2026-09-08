@@ -435,6 +435,8 @@ let sheetPending = { rows: new Map(), unmatched: [] };
 let sheetTimer = null;
 let sheetLastOk = null, sheetLastErr = null;
 const manualRows = new Set();   // 'date|name' — 시트에서 수동수정된 행
+let roster = [];                // 시트 '재직자 명단' 탭: [{ name, no, note, fp, active }] — 미출근 판정 기준
+const isWeekend = (dateKey) => { const d = new Date(dateKey + 'T00:00:00Z').getUTCDay(); return d === 0 || d === 6; };
 async function sheetCall(payload) {
   const r = await fetch(SHEET_URL, {
     method: 'POST', redirect: 'follow',
@@ -505,6 +507,9 @@ async function sheetLoad() {
       const rec = day[name] || (day[name] = { in: null, out: null, outNextDay: false, inCount: 0, outCount: 0, _seen: {} });
       rec.leave = { type: String(l.type), start: String(l.start || '') || null, end: String(l.end || '') || null, note: String(l.note || '') };
       if (!sheetKeys.has(date + '|' + name)) sheetQueue(date, name);   // 시트 출퇴근기록에도 행 생성 (근무일수 집계용)
+    }
+    if (Array.isArray(j.roster)) {
+      roster = j.roster.map((p) => ({ name: attNormalizeName(p.name), no: String(p.no || ''), note: String(p.note || ''), fp: !!p.fp, active: p.active !== false })).filter((p) => p.name);
     }
     for (const [d, people] of Object.entries(attendance.days)) for (const [p, r] of Object.entries(people)) {
       if (r.leave && !leaveKeys.has(d + '|' + p)) delete r.leave;   // 시트/캘린더에서 지워진 항목 반영
@@ -644,7 +649,12 @@ function attBuildReport(days) {
       if (!r.in && !r.out) status = r.leave ? 'leave' : 'absent';
       return { name, in: r.in, out: r.out, outNextDay: !!r.outNextDay, inCount: r.inCount || 0, outCount: r.outCount || 0, status, manual: !!r.manual, leave: r.leave || null };
     }).sort((a, b) => String(a.in || '99').localeCompare(String(b.in || '99')));
-    out.push({ date: key, people, unmatched: attendance.unmatched[key] || [] });
+    // 미출근: 재직자 명단(비고 '미해당' 제외) 중 기록·휴가가 없는 사람. 주말은 판정 안 함
+    const present = new Set(people.filter((p) => p.in || p.out || p.leave).map((p) => p.name));
+    const rosterMap = new Map(roster.map((p) => [p.name, p]));
+    for (const p of people) { const rp = rosterMap.get(p.name); p.fp = rp ? rp.fp : null; p.onRoster = !!rp; }
+    const absent = isWeekend(key) ? [] : roster.filter((p) => p.active && !present.has(p.name)).map((p) => ({ name: p.name, fp: p.fp }));
+    out.push({ date: key, weekend: isWeekend(key), people, absent, unmatched: attendance.unmatched[key] || [] });
   }
   return out;
 }
@@ -939,7 +949,8 @@ const server = http.createServer(async (req, res) => {
       const days = Math.min(92, Math.max(1, Number(url.searchParams.get('days') || 31)));
       return send(res, 200, { updatedAt: new Date().toISOString(), collectedAt: attLastAt,
         pollSec: 20, storage: SHEET_URL ? 'sheet+local' : ((GH_TOKEN && GH_DATA_REPO) ? 'github+local' : 'local'),
-        sheet: SHEET_URL ? { lastOk: sheetLastOk, lastErr: sheetLastErr } : null, days: attBuildReport(days) });
+        sheet: SHEET_URL ? { lastOk: sheetLastOk, lastErr: sheetLastErr } : null,
+        roster: roster.map((p) => ({ name: p.name, fp: p.fp, active: p.active })), days: attBuildReport(days) });
     }
     if (url.pathname === '/api/status') return send(res, 200, cache);
     if (url.pathname === '/api/config' && req.method === 'GET') {

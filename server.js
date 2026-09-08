@@ -328,6 +328,59 @@ async function fetchAutoSync() {
 }
 
 // ---------------------------------------------------------------------------
+// 출퇴근 기록: "출근 <이름>" / "퇴근 <이름>" 자동화 실행 이력 수집
+//   출근/퇴근 체크 도어락의 지문 잠금해제를 조건으로 하는 자동화를 사람별로
+//   만들어두면 (예: "출근 홍길동"), 실행 이력이 곧 출퇴근 기록이 됩니다.
+//   Aqara 이력 보존이 약 7일이라 서버가 5분마다 수집해 attendance.json 에 축적.
+// ---------------------------------------------------------------------------
+const ATT_PATH = path.join(__dirname, 'attendance.json');
+let attendance = {}; // { 'YYYY-MM-DD': { '이름': { in: 'HH:MM', out: 'HH:MM' } } }
+try { attendance = JSON.parse(fs.readFileSync(ATT_PATH, 'utf8')); } catch { attendance = {}; }
+
+function attMerge(dateKey, person, type, hhmm) {
+  const day = attendance[dateKey] || (attendance[dateKey] = {});
+  const rec = day[person] || (day[person] = { in: null, out: null });
+  if (type === 'in') { if (!rec.in || hhmm < rec.in) rec.in = hhmm; }
+  else { if (!rec.out || hhmm > rec.out) rec.out = hhmm; }
+}
+
+let attBusy = false;
+async function fetchAttendance(hoursBack) {
+  if (attBusy || DEMO_MODE) return;
+  attBusy = true;
+  try {
+    const now = Date.now();
+    const data = await mcpCallTool('automation_execution_history_inquiry', {
+      time_range: [kstString(now - hoursBack * 3600000), kstString(now + 60000)],
+    });
+    const list = data && data.outputs && Array.isArray(data.outputs.data) ? data.outputs.data : [];
+    let changed = false;
+    for (const item of list) {
+      const name = String(item.automation_name || '').trim();
+      const m = name.match(/^(출근|퇴근)[\s_\-:]*(.+)$/);
+      if (!m) continue;
+      const type = m[1] === '출근' ? 'in' : 'out';
+      const person = m[2].trim();
+      const logs = item.execute_logs || {};
+      const times = [
+        ...(((logs.success || {}).execute_time) || []),
+        ...(((logs.failed || {}).execute_time) || []), // 동작 실패해도 지문 인식은 된 것
+      ];
+      for (const t of times) {
+        const mm = String(t).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+        if (!mm) continue;
+        attMerge(`${mm[1]}-${mm[2]}-${mm[3]}`, person, type, `${mm[4]}:${mm[5]}`);
+        changed = true;
+      }
+    }
+    if (changed) { try { fs.writeFileSync(ATT_PATH, JSON.stringify(attendance, null, 2), 'utf8'); } catch { /* ignore */ } }
+  } catch { /* 다음 폴링에서 재시도 */ } finally { attBusy = false; }
+}
+// 시작 15초 후 7일 백필, 이후 5분마다 최근 25시간 수집
+setTimeout(() => fetchAttendance(7 * 24), 15000);
+setInterval(() => fetchAttendance(25), 5 * 60000);
+
+// ---------------------------------------------------------------------------
 // 층별 판정
 // ---------------------------------------------------------------------------
 function minutesAgo(ms) {
@@ -599,6 +652,25 @@ const server = http.createServer(async (req, res) => {
       const run = await mcpCallTool('scene_run', { scene_ids: [scene['scene id']] });
       writeLog();
       return send(res, 200, { ok: true, result: (run && run.message) || 'executed' });
+    }
+    if (url.pathname === '/attendance') {
+      const html = fs.readFileSync(path.join(__dirname, 'public', 'attendance.html'), 'utf8');
+      return send(res, 200, html, 'text/html');
+    }
+    if (url.pathname === '/api/attendance') {
+      const days = Math.min(92, Math.max(1, Number(url.searchParams.get('days') || 31)));
+      const tz = Number(config.tzOffsetHours ?? 9);
+      const out = [];
+      for (let i = 0; i < days; i++) {
+        const d = new Date(Date.now() + tz * 3600000 - i * 24 * 3600000);
+        const key = d.toISOString().slice(0, 10);
+        const day = attendance[key] || {};
+        const people = Object.entries(day)
+          .map(([name, r]) => ({ name, in: r.in, out: r.out }))
+          .sort((a, b) => String(a.in || '99').localeCompare(String(b.in || '99')));
+        out.push({ date: key, people });
+      }
+      return send(res, 200, { updatedAt: new Date().toISOString(), days: out });
     }
     if (url.pathname === '/api/status') return send(res, 200, cache);
     if (url.pathname === '/api/config' && req.method === 'GET') {

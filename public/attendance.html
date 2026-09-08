@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>출퇴근 기록 · AQARA LIFE</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root {
+    --bg: #0b0f14; --card: rgba(255,255,255,.045); --line: rgba(255,255,255,.09);
+    --ink: #eef2f7; --ink-2: #aab4c3; --ink-3: #5d6a7c;
+    --teal: #35c4b5; --good: #37d67a; --busy: #ff5d5d; --gold: #e7c46a; --blue: #6ea8ff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Pretendard Variable', Pretendard, -apple-system, sans-serif;
+    background: radial-gradient(1200px 700px at 70% -10%, rgba(53,196,181,.08), transparent 60%), var(--bg);
+    color: var(--ink); min-height: 100vh; padding: 34px 20px 60px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  .brand { font-size: .78rem; font-weight: 700; letter-spacing: .3em; color: var(--teal); margin-bottom: 8px; }
+  .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; }
+  .sub { color: var(--ink-2); font-size: .88rem; margin-top: 5px; }
+  .clock { text-align: right; }
+  .clock .t { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .clock .d { font-size: .78rem; color: var(--ink-3); }
+  h2 { font-size: 1.02rem; font-weight: 800; margin: 34px 0 14px; color: var(--ink-2); letter-spacing: .04em; }
+  .today { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .pcard {
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+    padding: 18px 20px; backdrop-filter: blur(10px);
+  }
+  .pcard .name { font-size: 1.12rem; font-weight: 800; margin-bottom: 12px; }
+  .pcard .row { display: flex; justify-content: space-between; font-size: .92rem; padding: 3px 0; }
+  .pcard .lbl { color: var(--ink-3); }
+  .t-in { color: var(--good); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .t-out { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .t-dur { color: var(--blue); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .t-none { color: var(--ink-3); }
+  .empty {
+    background: var(--card); border: 1px dashed var(--line); border-radius: 18px;
+    padding: 26px; text-align: center; color: var(--ink-3); font-size: .92rem;
+  }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 560px; }
+  th, td { padding: 10px 16px; text-align: left; white-space: nowrap; }
+  thead th { background: rgba(255,255,255,.05); color: var(--ink-2); font-weight: 700; font-size: .8rem; letter-spacing: .05em; }
+  tbody tr { border-top: 1px solid rgba(255,255,255,.05); }
+  tbody tr:hover { background: rgba(255,255,255,.03); }
+  td.date { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  td.name { font-weight: 700; }
+  .note { margin-top: 26px; font-size: .78rem; color: var(--ink-3); line-height: 1.7; }
+  .back { display: inline-block; margin-top: 26px; color: var(--ink-3); font-size: .82rem; text-decoration: none; }
+  .back:hover { color: var(--ink-2); }
+  .upd { font-size: .74rem; color: var(--ink-3); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">AQARA LIFE</div>
+  <div class="head">
+    <div>
+      <h1>🕐 출퇴근 기록</h1>
+      <div class="sub">출근·퇴근 체크 도어락 지문 인식 기준 · 5분 간격 자동 수집</div>
+    </div>
+    <div class="clock"><div class="t" id="clock">--:--:--</div><div class="d" id="date"></div></div>
+  </div>
+
+  <h2 id="todayTitle">오늘</h2>
+  <div class="today" id="today"></div>
+
+  <h2>지난 기록 (최근 31일)</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>날짜</th><th>이름</th><th>출근</th><th>퇴근</th><th>근무시간</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div class="upd" id="upd"></div>
+
+  <div class="note">
+    · 출근 = 그날 출근 체크 도어락 첫 지문 인식 시각, 퇴근 = 그날 퇴근 체크 도어락 마지막 지문 인식 시각<br>
+    · 새 직원 등록: 도어락에 지문 등록 후, 아카라 앱에서 자동화 "출근 이름" / "퇴근 이름" 두 개를 만들면 자동으로 집계에 포함됩니다
+  </div>
+  <a class="back" href="/">← 화장실 재실 현황판으로</a>
+</div>
+<script>
+function tickClock() {
+  const n = new Date();
+  const p = (x) => String(x).padStart(2, '0');
+  document.getElementById('clock').textContent = `${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+  document.getElementById('date').textContent = n.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+}
+tickClock(); setInterval(tickClock, 1000);
+
+function dur(tin, tout) {
+  if (!tin || !tout) return null;
+  const [a, b] = tin.split(':').map(Number), [c, d] = tout.split(':').map(Number);
+  let m = (c * 60 + d) - (a * 60 + b);
+  if (m < 0) return null;
+  return Math.floor(m / 60) + '시간 ' + (m % 60) + '분';
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/attendance?days=31');
+    const j = await r.json();
+    const days = j.days || [];
+    // 오늘
+    const today = days[0] || { date: '', people: [] };
+    document.getElementById('todayTitle').textContent = '오늘 (' + today.date + ')';
+    const box = document.getElementById('today');
+    box.innerHTML = '';
+    if (!today.people.length) {
+      box.innerHTML = '<div class="empty">아직 오늘 출근 기록이 없습니다.<br>도어락 지문 인식과 사람별 자동화("출근 이름"/"퇴근 이름")가 설정되면 자동으로 표시됩니다.</div>';
+    } else {
+      for (const p of today.people) {
+        const d = dur(p.in, p.out);
+        const el = document.createElement('div');
+        el.className = 'pcard';
+        el.innerHTML = `
+          <div class="name">${p.name}</div>
+          <div class="row"><span class="lbl">출근</span><span class="${p.in ? 't-in' : 't-none'}">${p.in || '-'}</span></div>
+          <div class="row"><span class="lbl">퇴근</span><span class="${p.out ? 't-out' : 't-none'}">${p.out || '근무 중'}</span></div>
+          <div class="row"><span class="lbl">근무시간</span><span class="${d ? 't-dur' : 't-none'}">${d || '-'}</span></div>`;
+        box.appendChild(el);
+      }
+    }
+    // 지난 기록
+    const rows = document.getElementById('rows');
+    rows.innerHTML = '';
+    let any = false;
+    for (const day of days.slice(1)) {
+      for (const p of day.people) {
+        any = true;
+        const tr = document.createElement('tr');
+        const d = dur(p.in, p.out);
+        tr.innerHTML = `<td class="date">${day.date}</td><td class="name">${p.name}</td>
+          <td class="${p.in ? 't-in' : 't-none'}">${p.in || '-'}</td>
+          <td class="${p.out ? 't-out' : 't-none'}">${p.out || '-'}</td>
+          <td class="${d ? 't-dur' : 't-none'}">${d || '-'}</td>`;
+        rows.appendChild(tr);
+      }
+    }
+    if (!any) rows.innerHTML = '<tr><td colspan="5" style="color:var(--ink-3); text-align:center; padding:22px">기록 없음</td></tr>';
+    document.getElementById('upd').textContent = '마지막 갱신 ' + new Date(j.updatedAt).toLocaleTimeString('ko-KR', { hour12: false });
+  } catch (e) {
+    document.getElementById('upd').textContent = '서버 연결 실패 — 잠시 후 다시 시도합니다';
+  }
+}
+load(); setInterval(load, 60000);
+</script>
+</body>
+</html>

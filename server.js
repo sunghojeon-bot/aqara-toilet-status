@@ -369,9 +369,10 @@ function attMerge(store, type, person, t) {
   if (rec._seen[seenKey]) return false;           // 같은 이벤트 재수집 → 무시
   rec._seen[seenKey] = 1;
   if (rec.manual) return false;                   // 시트에서 수동수정된 행은 유지
-  if (type === 'in') { rec.inCount++; if (!rec.in || t.hhmm < rec.in) rec.in = t.hhmm; }
+  const seenCount = (pre) => Object.keys(rec._seen).filter((k) => k.startsWith(pre)).length;
+  if (type === 'in') { rec.inCount = Math.max(rec._sheetInCount || 0, seenCount('in@')); if (!rec.in || t.hhmm < rec.in) rec.in = t.hhmm; }
   else {
-    rec.outCount++;
+    rec.outCount = Math.max(rec._sheetOutCount || 0, seenCount('out@'));
     const cmp = (nextDay ? '24' : '') + t.hhmm;   // 익일 퇴근은 항상 더 늦은 것으로 취급
     const cur = rec.out ? ((rec.outNextDay ? '24' : '') + rec.out) : null;
     if (!cur || cmp > cur) { rec.out = t.hhmm; rec.outNextDay = nextDay; }
@@ -482,7 +483,8 @@ async function sheetLoad() {
       if (sIn && (!cur.in || sIn < cur.in)) cur.in = sIn;
       const a = (sNext ? '24' : '') + (sOut || ''), b = (cur.outNextDay ? '24' : '') + (cur.out || '');
       if (sOut && (!cur.out || a > b)) { cur.out = sOut; cur.outNextDay = sNext; }
-      cur.inCount = Math.max(cur.inCount || 0, Number(row.inCount) || 0); cur.outCount = Math.max(cur.outCount || 0, Number(row.outCount) || 0);
+      cur._sheetInCount = Number(row.inCount) || 0; cur._sheetOutCount = Number(row.outCount) || 0;   // 재시작 후 재수집 시 횟수가 누적 합산되지 않도록
+      cur.inCount = Math.max(cur.inCount || 0, cur._sheetInCount); cur.outCount = Math.max(cur.outCount || 0, cur._sheetOutCount);
     }
     for (const u of (j.unmatched || [])) {
       const date = String(u.date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
@@ -559,7 +561,7 @@ function attSave() {
   const out = { days: {}, unmatched: attendance.unmatched };
   for (const [d, people] of Object.entries(attendance.days)) {
     out.days[d] = {};
-    for (const [p, r] of Object.entries(people)) { const { _seen, ...rest } = r; out.days[d][p] = rest; }
+    for (const [p, r] of Object.entries(people)) { const { _seen, _sheetInCount, _sheetOutCount, ...rest } = r; out.days[d][p] = rest; }
   }
   const text = JSON.stringify(out, null, 2);
   try { fs.writeFileSync(ATT_PATH, text, 'utf8'); } catch { /* ignore */ }

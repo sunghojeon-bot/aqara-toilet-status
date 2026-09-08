@@ -133,7 +133,7 @@
 
   <div class="note">
     · 출근 = 그날 출근 체크 도어락 첫 지문 인식, 퇴근 = 퇴근 체크 도어락 마지막 지문 인식 · 05:00 이전 퇴근은 전날 근무로 기록(익일 표시)<br>
-    · 미출근 = 최근 31일 내 기록이 있는 직원 중 오늘 기록이 없는 사람 · 앱 개방·수동 문열림·미등록 지문은 출퇴근으로 기록되지 않고 "확인 필요"에만 표시<br>
+    · 미출근 = 시트 "재직자 명단" 탭 기준(비고 "미해당" 제외, 주말 제외)으로 그날 출퇴근·휴가 기록이 없는 사람 · 10:00 전에는 "출근 전" · 지문 등록 여부가 비어 있으면 "지문 미등록" 표시<br>    · 앱 개방·수동 문열림·미등록 지문은 출퇴근으로 기록되지 않고 "확인 필요"에만 표시<br>
     · 외근·출장·재택: 시트 "외근출장" 탭 입력 (보라색) · 휴가(연차·반차): Google 캘린더 "종일-이름 / 오전반차-이름 / 오후반차-이름" 일정 자동 반영 (분홍색) · 둘 다 미출근에서 제외, 5분 내 반영<br>
     · 새 직원: 도어락 지문 등록 후 아카라 앱 자동화 "출근 이름" / "퇴근 이름" 생성 → 자동 집계
   </div>
@@ -149,7 +149,8 @@ function tickClock() {
 tickClock(); setInterval(tickClock, 1000);
 
 let DATA = null, tab = 'today', filter = 'all', q = '', showDone = false;
-const STATUS = { ok: ['퇴근 완료', 'b-ok'], working: ['근무 중', 'b-work'], missing_out: ['퇴근 누락', 'b-warn'], missing_in: ['출근 누락', 'b-bad'], absent: ['미출근', 'b-dim'], leave: ['외근·출장', 'b-leave'] };
+const STATUS = { ok: ['퇴근 완료', 'b-ok'], working: ['근무 중', 'b-work'], missing_out: ['퇴근 누락', 'b-warn'], missing_in: ['출근 누락', 'b-bad'], absent: ['미출근', 'b-dim'], pre: ['출근 전', 'b-dim'], leave: ['외근·출장', 'b-leave'] };
+const fpBadge = (p) => p.fp === false ? '<span class="badge b-dim" style="margin-left:4px;opacity:.7" title="재직자 명단의 지문 등록 여부가 비어 있음">지문 미등록</span>' : (p.onRoster === false && (p.in || p.out) ? '<span class="badge b-dim" style="margin-left:4px;opacity:.7" title="재직자 명단에 없는 이름">명단 외</span>' : '');
 const badge = (st) => { const s = STATUS[st] || STATUS.ok; return `<span class="badge ${s[1]}">${s[0]}</span>`; };
 const isVacation = (p) => !!p.leave && /연차|반차|휴가|월차|휴무|병가|경조/.test(p.leave.type);
 const leaveBadge = (p) => p.leave ? `<span class="badge ${isVacation(p) ? 'b-vac' : 'b-leave'}" title="${(p.leave.note || '').replace(/"/g, '&quot;')}">${p.leave.type}</span>` : '';
@@ -169,12 +170,15 @@ function knownPeople(days) {
   for (const d of days) for (const p of d.people) set.add(p.name);
   return [...set].sort((a, b) => a.localeCompare(b, 'ko'));
 }
+const ABSENT_AFTER = '10:00';   // 이 시각 전에는 '출근 전'으로 표시
+const nowHHMM = () => { const n = new Date(); return String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0'); };
 function rowsForDay(day, days) {
-  const map = new Map(day.people.map((p) => [p.name, p]));
   const rows = [...day.people];
-  if (day === days[0]) for (const n of knownPeople(days)) if (!map.has(n)) rows.push({ name: n, in: null, out: null, status: 'absent' });
+  const pre = day === days[0] && nowHHMM() < ABSENT_AFTER;
+  for (const a of (day.absent || [])) rows.push({ name: a.name, fp: a.fp, onRoster: true, in: null, out: null, status: pre ? 'pre' : 'absent' });
   return rows;
 }
+const rosterActive = () => (DATA && DATA.roster ? DATA.roster.filter((p) => p.active) : []);
 function applyFilter(rows) {
   return rows.filter((p) => {
     if (q && !p.name.includes(q)) return false;
@@ -182,6 +186,7 @@ function applyFilter(rows) {
     if (filter === 'issue') return p.status === 'missing_in' || p.status === 'missing_out';
     if (filter === 'leave') return !!p.leave && !isVacation(p);
     if (filter === 'vacation') return isVacation(p);
+    if (filter === 'absent') return p.status === 'absent' || p.status === 'pre';
     return p.status === filter;
   });
 }
@@ -193,7 +198,7 @@ function personRow(p, dateCol) {
   return `<tr>${dateCol ? `<td class="date">${dateCol}</td>` : ''}<td class="name">${p.name}</td>
     <td class="num ${p.in ? 't-in' : 't-none'}">${p.in || (p.leave && p.leave.start ? `<span class="t-plan">${p.leave.start}</span><span class="small">예정</span>` : '-')}${p.inCount > 1 ? `<span class="small">${p.inCount}회</span>` : ''}</td>
     <td class="num ${p.out ? 't-out' : 't-none'}">${p.out ? outText(p) : (p.leave && p.leave.end ? `<span class="t-plan">${p.leave.end}</span><span class="small">예정</span>` : outText(p))}${p.outCount > 1 ? `<span class="small">${p.outCount}회</span>` : ''}</td>
-    <td class="num ${d ? 't-dur' : 't-none'}">${d || '-'}</td><td>${p.status === 'leave' ? leaveBadge(p) : badge(p.status) + (p.leave ? ' ' + leaveBadge(p) : '')}${p.manual ? '<span class="badge b-dim" style="margin-left:4px">시트 수정</span>' : ''}</td></tr>`;
+    <td class="num ${d ? 't-dur' : 't-none'}">${d || '-'}</td><td>${p.status === 'leave' ? leaveBadge(p) : badge(p.status) + (p.leave ? ' ' + leaveBadge(p) : '')}${p.manual ? '<span class="badge b-dim" style="margin-left:4px">시트 수정</span>' : ''}${fpBadge(p)}</td></tr>`;
 }
 
 let currentRows = [];   // CSV 용
@@ -201,7 +206,7 @@ function render() {
   if (!DATA) return;
   const days = DATA.days || [];
   const today = days[0] || { date: '', people: [], unmatched: [] };
-  const known = knownPeople(days);
+  const known = [...new Set([...rosterActive().map((p) => p.name), ...knownPeople(days)])].sort((x, y) => x.localeCompare(y, 'ko'));
   const todayRows = rowsForDay(today, days);
   const c = (st) => todayRows.filter((p) => p.status === st).length;
   const allReview = buildReview(days);
@@ -210,7 +215,7 @@ function render() {
   const statDefs = [
     ['all', today.people.filter((p) => p.in || p.out).length, '오늘 출근', 'c-good'], ['working', c('working'), '근무 중', 'c-blue'], ['ok', c('ok'), '퇴근 완료', 'c-dim'],
     ['leave', todayRows.filter((p) => p.leave && !isVacation(p)).length, '외근·출장', 'c-leave'], ['vacation', todayRows.filter((p) => isVacation(p)).length, '휴가', 'c-vac'],
-    ['absent', c('absent'), '미출근', 'c-gold'], ['issue', reviewItems.length, '확인 필요', 'c-busy'],
+    ['absent', c('absent') + c('pre'), today.weekend ? '휴무일' : (c('pre') ? '출근 전' : '미출근'), 'c-gold'], ['issue', reviewItems.length, '확인 필요', 'c-busy'],
   ];
   $('stats').innerHTML = statDefs.map(([f, n, l, cls]) => `<div class="stat ${cls} ${tab === 'today' && filter === f ? 'active' : ''}" data-f="${f}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
   $('stats').querySelectorAll('.stat').forEach((el) => el.onclick = () => { const f = el.dataset.f; if (f === 'issue') { setTab('review'); } else { setTab('today'); filter = f; setChip(); render(); } });
@@ -224,14 +229,14 @@ function render() {
   if (tab === 'today') {
     const rows = applyFilter(todayRows).sort((a, b) => (a.in || '99').localeCompare(b.in || '99') || a.name.localeCompare(b.name, 'ko'));
     currentRows = rows.map((p) => [today.date, p.name, p.in || '', outText(p), durText(p) || '', statusText(p)]);
-    sum.innerHTML = `<span>${today.date}</span><span>등록 직원 <b>${known.length}</b>명</span><span>표시 <b>${rows.length}</b>명</span>`;
+    sum.innerHTML = `<span>${today.date}${today.weekend ? ' <span class="small">(주말 · 미출근 판정 안 함)</span>' : ''}</span><span>재직자 <b>${rosterActive().length || known.length}</b>명</span><span>지문 등록 <b>${rosterActive().filter((p) => p.fp).length}</b>명</span><span>표시 <b>${rows.length}</b>명</span>`;
     wrap.innerHTML = rows.length ? table(['이름', '출근', '퇴근', '근무시간', '상태'], rows.map((p) => personRow(p)).join(''))
       : `<div class="empty">${known.length ? '조건에 맞는 직원이 없습니다.' : '아직 기록이 없습니다. 도어락 지문 인식 후 30초~1분 내에 표시됩니다.'}</div>`;
   } else if (tab === 'byday') {
     const pick = $('dayPick').value || (days[1] ? days[1].date : today.date);
     $('dayPick').value = pick;
     const day = days.find((d) => d.date === pick) || { date: pick, people: [], unmatched: [] };
-    const rows = applyFilter(day.people).sort((a, b) => (a.in || '99').localeCompare(b.in || '99'));
+    const rows = applyFilter(rowsForDay(day, days)).sort((a, b) => (a.in || '99').localeCompare(b.in || '99') || a.name.localeCompare(b.name, 'ko'));
     currentRows = rows.map((p) => [pick, p.name, p.in || '', outText(p), durText(p) || '', statusText(p)]);
     const tot = rows.reduce((s, p) => s + (durMin(p) || 0), 0);
     sum.innerHTML = `<span>${pick}</span><span>출근 <b>${day.people.filter((p) => p.in || p.out).length}</b>명</span><span>총 근무 <b>${fmtMin(tot) || '0분'}</b></span><span>미매칭 인식 <b>${(day.unmatched || []).length}</b>건</span>`;

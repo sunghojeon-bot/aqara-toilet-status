@@ -73,7 +73,23 @@ let config = loadConfig();
 
 const PORT = Number(process.env.PORT || 3000);
 const MCP_URL = process.env.AQARA_MCP_URL || config.mcpUrl;
-const API_KEY = (process.env.AQARA_API_KEY || config.apiKey || '').trim();
+// 로그인 페이지의 접속 정보를 통째로("aqara_api_key=…\naqara_mcp_url=…") 붙여넣어도 키 값만 골라낸다.
+function cleanApiKey(raw) {
+  let v = String(raw || '').trim();
+  const m = v.match(/aqara_api_key\s*[=:]\s*([^\s"'<>]+)/i);
+  if (m) v = m[1];
+  v = v.split(/\r?\n/)[0].trim().replace(/^(bearer\s+)/i, '').replace(/^["'<]+|[>"']+$/g, '').trim();
+  return v;
+}
+const API_KEY = cleanApiKey(process.env.AQARA_API_KEY || config.apiKey);
+// 오류 메시지에 키가 섞여 나가지 않도록 가린다 (예: 잘못된 헤더 값 오류).
+function redact(msg) {
+  let t = String(msg === undefined || msg === null ? '' : (msg && msg.message) || msg);
+  if (API_KEY && API_KEY.length >= 8) t = t.split(API_KEY).join('***');
+  const rawEnv = String(process.env.AQARA_API_KEY || '').trim();
+  if (rawEnv && rawEnv.length >= 8) t = t.split(rawEnv).join('***');
+  return t.replace(/Bearer\s+\S+/gi, 'Bearer ***');
+}
 const DEMO_MODE = !API_KEY;
 // 서비스 분리: SERVICE=toilet (화장실 현황판만) / SERVICE=attendance (출퇴근만, '/'가 출퇴근 페이지) / 미설정 = 둘 다
 const SERVICE = (process.env.SERVICE || 'all').trim().toLowerCase();
@@ -885,7 +901,7 @@ async function pollOnce() {
       floors: config.floors.map((f) => judgeFloor(f, statusRows)),
     };
   } catch (e) {
-    cache = { ...cache, updatedAt: new Date().toISOString(), error: String(e.message || e) };
+    cache = { ...cache, updatedAt: new Date().toISOString(), error: redact(e) };
   }
   writeLog();
 }
@@ -1052,7 +1068,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/raw') return send(res, 200, { raw: lastRaw });
     return send(res, 404, { error: 'not found' });
   } catch (e) {
-    return send(res, 500, { error: String(e.message || e) });
+    return send(res, 500, { error: redact(e) });
   }
 });
 
